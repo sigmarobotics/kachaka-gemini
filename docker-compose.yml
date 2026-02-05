@@ -1,0 +1,28 @@
+services:
+  kachaka-gemini:
+    build: .
+    image: kachaka-gemini-live:latest
+    container_name: kachaka-gemini-live
+    ports:
+      - "9000:9000"
+    environment:
+      - ROBOT_IP=${ROBOT_IP:-192.168.50.133:26400}
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+
+  # Development mode: mount source + hot reload
+  dev:
+    build: .
+    container_name: kachaka-gemini-dev
+    ports:
+      - "9000:9000"
+    environment:
+      - ROBOT_IP=${ROBOT_IP:-192.168.50.133:26400}
+    volumes:
+      - ./src/backend:/app
+      - ./src/frontend:/app/frontend
+      - ./data:/app/data
+    command: uvicorn main:app --host 0.0.0.0 --port 9000 --reload
+    restart: unless-stopped
+    profiles: ["dev"]
