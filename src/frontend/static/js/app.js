@@ -20,32 +20,8 @@ window.switchTab = function (tabName) {
     });
 };
 
-// Manual control
-window.manualControl = function (direction) {
-    fetch('/api/manual_control', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ direction }),
-    }).catch((e) => console.error('Manual control failed:', e));
-};
-
 // Init on DOM ready
 document.addEventListener('DOMContentLoaded', () => {
-    // Button handlers
-    const homeBtn = document.getElementById('btn-home');
-    const cancelBtn = document.getElementById('btn-cancel-command');
-
-    if (homeBtn) {
-        homeBtn.addEventListener('click', () => {
-            fetch('/api/return_home', { method: 'POST' }).catch(console.error);
-        });
-    }
-    if (cancelBtn) {
-        cancelBtn.addEventListener('click', () => {
-            fetch('/api/cancel_command', { method: 'POST' }).catch(console.error);
-        });
-    }
-
     // Init modules
     initMap();
     startPolling();

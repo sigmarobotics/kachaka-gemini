@@ -9,6 +9,7 @@ let mediaStream = null;
 let scriptProcessor = null;
 let currentModelText = '';
 let currentResponseMode = 'audio';
+let currentApiMode = 'live';
 let sessionTokenTotal = 0;
 
 // Audio playback: single AudioContext, schedule chunks on timeline
@@ -69,6 +70,9 @@ async function connect() {
             const msg = JSON.parse(event.data);
             // Mark as connected when Gemini session is ready
             if (msg.type === 'status' && msg.message && msg.message.includes('Connected to Gemini')) {
+                if (msg.api_mode) {
+                    currentApiMode = msg.api_mode;
+                }
                 if (msg.response_mode) {
                     currentResponseMode = msg.response_mode;
                 }
@@ -122,8 +126,8 @@ function updateConnectionUI(connected) {
         if (statusDot) statusDot.classList.remove('connected');
     }
 
-    // In text mode, hide the mic button
-    const isTextMode = currentResponseMode === 'text';
+    // In text API mode or text response mode, hide the mic button
+    const isTextMode = currentResponseMode === 'text' || currentApiMode === 'text';
     micBtn.disabled = !connected || isTextMode;
     micBtn.style.display = isTextMode ? 'none' : '';
     sendBtn.disabled = !connected;

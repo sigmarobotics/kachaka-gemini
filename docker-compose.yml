@@ -23,6 +23,6 @@ services:
       - ./src/backend:/app
       - ./src/frontend:/app/frontend
       - ./data:/app/data
-    command: uvicorn main:app --host 0.0.0.0 --port 9000 --reload
+    command: uvicorn main:app --host 0.0.0.0 --port 9000 --reload --log-level warning
     restart: unless-stopped
     profiles: ["dev"]

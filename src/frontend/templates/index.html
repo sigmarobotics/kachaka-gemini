@@ -19,7 +19,6 @@
 
             <div class="tabs">
                 <button class="tab-btn active" data-tab="chat" onclick="switchTab('chat')">Chat</button>
-                <button class="tab-btn" data-tab="control" onclick="switchTab('control')">Control</button>
                 <button class="tab-btn" data-tab="settings" onclick="switchTab('settings')">Settings</button>
             </div>
 
@@ -39,8 +38,17 @@
             <!-- ═══ CHAT VIEW ═══ -->
             <div id="view-chat" class="tab-content no-padding">
                 <div class="split-view">
-                    <!-- LEFT: MAP (compact) -->
+                    <!-- LEFT: CAMERA + MAP -->
                     <div class="left-panel chat-map-panel">
+                        <div class="monitor-frame collapsible" id="front-camera-frame">
+                            <div class="frame-header" onclick="this.closest('.monitor-frame').classList.toggle('collapsed')">
+                                <h4>Front Camera <span class="toggle-icon">&#9660;</span></h4>
+                            </div>
+                            <div class="frame-content">
+                                <img id="front-camera-img" src="/api/camera/front" alt="Front Camera"
+                                    style="width: 100%; display: block;" />
+                            </div>
+                        </div>
                         <div class="map-container" id="map-container">
                             <div class="loading-overlay" id="map-loading">
                                 <div class="spinner"></div>
@@ -81,52 +89,6 @@
                 </div>
             </div>
 
-            <!-- ═══ CONTROL VIEW ═══ -->
-            <div id="view-control" class="tab-content no-padding" style="display: none;">
-                <div class="split-view">
-                    <div class="left-panel">
-                        <div class="map-container" id="control-map-container">
-                            <!-- Map canvas is in chat view; shown via CSS when control tab active -->
-                        </div>
-                        <div class="controls-panel">
-                            <div style="display: flex; align-items: center; justify-content: space-between; width: 100%; gap: 16px;">
-                                <div style="display: flex; flex: 1; gap: 8px;">
-                                    <button id="btn-home" class="btn-premium" style="flex: 1;">
-                                        <span class="icon">&#8962;</span> Return Home
-                                    </button>
-                                    <button id="btn-cancel-command" class="btn-danger"
-                                        style="flex: 0 0 auto; padding: 0 16px;" title="Emergency Stop">
-                                        <span class="icon">&#9632;</span>
-                                    </button>
-                                </div>
-                                <div class="d-pad">
-                                    <button class="up" onclick="manualControl('forward')" title="Forward 0.1m">&#9650;</button>
-                                    <button class="left" onclick="manualControl('left')" title="Left 10 deg">&#9664;</button>
-                                    <button class="down" onclick="manualControl('backward')" title="Backward 0.1m">&#9660;</button>
-                                    <button class="right" onclick="manualControl('right')" title="Right 10 deg">&#9654;</button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="right-panel">
-                        <div class="header">
-                            <h2>Camera & Monitor</h2>
-                        </div>
-
-                        <div class="monitor-frame collapsible" id="front-camera-frame">
-                            <div class="frame-header" onclick="this.closest('.monitor-frame').classList.toggle('collapsed')">
-                                <h4>Front Camera <span class="toggle-icon">&#9660;</span></h4>
-                            </div>
-                            <div class="frame-content">
-                                <img id="front-camera-img" src="/api/camera/front" alt="Front Camera"
-                                    style="width: 100%; display: block;" />
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
             <!-- ═══ SETTINGS VIEW ═══ -->
             <div id="view-settings" class="tab-content" style="display: none;">
                 <div class="header" style="width: 100%; max-width: 800px; margin: 0 auto;">
@@ -141,11 +103,19 @@
                             <input type="password" id="setting-api-key" placeholder="Enter Gemini API Key">
                         </div>
                         <div class="form-group">
+                            <label>API Mode</label>
+                            <select id="setting-api-mode">
+                                <option value="live">Live API (Streaming Audio/Text)</option>
+                                <option value="text">Text API (REST)</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
                             <label>Gemini Model</label>
                             <div class="model-select-row">
                                 <select id="setting-model">
                                     <option value="gemini-2.5-flash-native-audio-latest">gemini-2.5-flash-native-audio-latest</option>
                                     <option value="gemini-2.0-flash-live-001">gemini-2.0-flash-live-001</option>
+                                    <option value="gemini-3-flash-preview">gemini-3-flash-preview</option>
                                 </select>
                                 <button class="btn-small btn-query-models" id="btn-query-models">Query</button>
                             </div>

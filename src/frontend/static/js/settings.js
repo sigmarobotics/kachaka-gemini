@@ -6,6 +6,7 @@ export async function loadSettings() {
         const settings = await res.json();
 
         const apiKeyInput = document.getElementById('setting-api-key');
+        const apiModeSelect = document.getElementById('setting-api-mode');
         const modelInput = document.getElementById('setting-model');
         const responseModeSelect = document.getElementById('setting-response-mode');
         const personaInput = document.getElementById('setting-persona');
@@ -20,6 +21,10 @@ export async function loadSettings() {
         const interimPhrasesInput = document.getElementById('setting-interim-phrases');
 
         if (apiKeyInput) apiKeyInput.placeholder = settings.gemini_api_key_masked || 'Enter Gemini API Key';
+        if (apiModeSelect) {
+            apiModeSelect.value = settings.api_mode || 'live';
+            applyApiModeVisibility(apiModeSelect.value);
+        }
         if (modelInput) {
             const savedModel = settings.gemini_model || 'gemini-2.5-flash-native-audio-latest';
             // Ensure option exists in the select
@@ -111,8 +116,10 @@ async function queryModels() {
     btn.disabled = true;
     btn.textContent = '...';
 
+    const apiMode = document.getElementById('setting-api-mode')?.value || 'live';
+
     try {
-        const res = await fetch('/api/models');
+        const res = await fetch(`/api/models?mode=${apiMode}`);
         const data = await res.json();
 
         if (!res.ok) {
@@ -122,7 +129,7 @@ async function queryModels() {
 
         const models = data.models || [];
         if (models.length === 0) {
-            alert('No Live API models found. Check your API key.');
+            alert(`No ${apiMode === 'text' ? 'Text API' : 'Live API'} models found. Check your API key.`);
             return;
         }
 
@@ -149,11 +156,66 @@ async function queryModels() {
     }
 }
 
+const DEFAULT_LIVE_MODELS = [
+    'gemini-2.5-flash-native-audio-latest',
+    'gemini-2.0-flash-live-001',
+];
+const DEFAULT_TEXT_MODELS = [
+    'gemini-3-flash-preview',
+    'gemini-2.5-flash-preview-05-20',
+    'gemini-2.0-flash',
+];
+
+function applyApiModeVisibility(mode) {
+    const isText = mode === 'text';
+    // Voice selector row
+    const voiceGroup = document.getElementById('setting-voice')?.closest('.form-group');
+    if (voiceGroup) voiceGroup.style.display = isText ? 'none' : '';
+    // Simpler: hide specific interim elements
+    const interimToggleGroup = document.getElementById('setting-enable-interim')?.closest('.form-group');
+    if (interimToggleGroup) interimToggleGroup.style.display = isText ? 'none' : '';
+    const interimPhrasesGroup = document.getElementById('setting-interim-phrases')?.closest('.form-group');
+    if (interimPhrasesGroup) interimPhrasesGroup.style.display = isText ? 'none' : '';
+    const interimGenerateGroup = document.getElementById('btn-generate-interim')?.closest('.form-group');
+    if (interimGenerateGroup) interimGenerateGroup.style.display = isText ? 'none' : '';
+    // Camera to AI toggle
+    const cameraGroup = document.getElementById('setting-camera-to-ai')?.closest('.form-group');
+    if (cameraGroup) cameraGroup.style.display = isText ? 'none' : '';
+    // Response Mode — hide in text mode (always text)
+    const responseModeGroup = document.getElementById('setting-response-mode')?.closest('.form-group');
+    if (responseModeGroup) responseModeGroup.style.display = isText ? 'none' : '';
+
+    // Swap default model options based on mode
+    const modelSelect = document.getElementById('setting-model');
+    if (modelSelect) {
+        const currentValue = modelSelect.value;
+        const defaults = isText ? DEFAULT_TEXT_MODELS : DEFAULT_LIVE_MODELS;
+        // Ensure default options exist
+        for (const id of defaults) {
+            if (!modelSelect.querySelector(`option[value="${id}"]`)) {
+                const opt = document.createElement('option');
+                opt.value = id;
+                opt.textContent = id;
+                modelSelect.appendChild(opt);
+            }
+        }
+        // If current selection doesn't belong to this mode's defaults and hasn't been queried, switch to first default
+        const allOptions = Array.from(modelSelect.options).map(o => o.value);
+        if (!allOptions.includes(currentValue) || (!defaults.includes(currentValue) && DEFAULT_LIVE_MODELS.concat(DEFAULT_TEXT_MODELS).includes(currentValue))) {
+            modelSelect.value = defaults[0];
+        }
+    }
+}
+
 export function initSettings() {
     const saveBtn = document.getElementById('btn-save-settings');
     if (saveBtn) {
         saveBtn.addEventListener('click', saveSettings);
     }
+
+    // API Mode change handler
+    document.getElementById('setting-api-mode')
+        ?.addEventListener('change', (e) => applyApiModeVisibility(e.target.value));
 
     // Query models button
     document.getElementById('btn-query-models')
@@ -252,6 +314,7 @@ function validateJsonInput(textareaId, errorElId, expectedType) {
 
 async function saveSettings() {
     const apiKeyInput = document.getElementById('setting-api-key');
+    const apiModeSelect = document.getElementById('setting-api-mode');
     const modelInput = document.getElementById('setting-model');
     const responseModeSelect = document.getElementById('setting-response-mode');
     const personaInput = document.getElementById('setting-persona');
@@ -279,6 +342,7 @@ async function saveSettings() {
     if (apiKeyInput && apiKeyInput.value.trim()) {
         updates.gemini_api_key = apiKeyInput.value.trim();
     }
+    if (apiModeSelect) updates.api_mode = apiModeSelect.value;
     if (modelInput) updates.gemini_model = modelInput.value.trim();
     if (responseModeSelect) updates.response_mode = responseModeSelect.value;
     if (personaInput) updates.persona = personaInput.value;

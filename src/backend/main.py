@@ -18,6 +18,7 @@ import settings_service
 import token_service
 from config import DEFAULT_SETTINGS
 from gemini_live_service import GeminiLiveSession, GEMINI_WS_URL
+from gemini_text_service import GeminiTextSession
 
 # Paths - support both local dev and Docker
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -145,8 +146,12 @@ MODELS_LIST_URL = "https://generativelanguage.googleapis.com/v1beta/models"
 
 
 @app.get("/api/models")
-def list_models():
-    """Query available Gemini models that support the Live API (bidiGenerateContent)."""
+def list_models(mode: str = "live"):
+    """Query available Gemini models filtered by API mode.
+
+    Args:
+        mode: 'live' filters by bidiGenerateContent, 'text' filters by generateContent.
+    """
     api_key = settings_service.get("gemini_api_key", "")
     if not api_key:
         return JSONResponse({"error": "Gemini API key not configured"}, status_code=400)
@@ -162,15 +167,17 @@ def list_models():
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=502)
 
-    live_models = []
+    required_method = "generateContent" if mode == "text" else "bidiGenerateContent"
+
+    matched_models = []
     for m in data.get("models", []):
         methods = m.get("supportedGenerationMethods", [])
-        if "bidiGenerateContent" not in methods:
+        if required_method not in methods:
             continue
         # Strip "models/" prefix for display
         name = m.get("name", "")
         model_id = name.removeprefix("models/")
-        live_models.append({
+        matched_models.append({
             "id": model_id,
             "displayName": m.get("displayName", model_id),
             "description": m.get("description", ""),
@@ -178,7 +185,7 @@ def list_models():
             "outputTokenLimit": m.get("outputTokenLimit"),
         })
 
-    return {"models": live_models}
+    return {"models": matched_models}
 
 
 @app.post("/api/generate_interim_audio")
@@ -326,7 +333,11 @@ async def ws_chat(websocket: WebSocket):
                 try:
                     if session:
                         await session.close()
-                    session = GeminiLiveSession(websocket)
+                    api_mode = settings_service.get("api_mode", "live")
+                    if api_mode == "text":
+                        session = GeminiTextSession(websocket)
+                    else:
+                        session = GeminiLiveSession(websocket)
                     ok = await session.connect()
                     if not ok:
                         session = None

@@ -66,6 +66,11 @@ DEFAULT_FUNCTION_DECLARATIONS = [
         "description": "Cancel the currently running robot command. Use this if the user wants to stop the robot.",
         "parameters": {"type": "object", "properties": {}},
     },
+    {
+        "name": "capture_camera",
+        "description": "Capture an image from the robot's front camera. Use this when the user asks what you see, what's in front of the robot, or requests a visual description of the surroundings.",
+        "parameters": {"type": "object", "properties": {}},
+    },
 ]
 
 DEFAULT_INTERIM_PHRASES = {
@@ -74,10 +79,12 @@ DEFAULT_INTERIM_PHRASES = {
     "return_shelf": "好的，正在歸還貨架",
     "get_robot_status": "正在查詢機器人狀態",
     "cancel_command": "正在取消目前的指令",
+    "capture_camera": "正在擷取相機畫面",
 }
 
 DEFAULT_SETTINGS = {
     "gemini_api_key": "",
+    "api_mode": "live",                # "live" or "text"
     "gemini_model": "gemini-2.5-flash-native-audio-latest",
     "response_mode": "audio",          # "audio" or "text"
     "enable_google_search": False,

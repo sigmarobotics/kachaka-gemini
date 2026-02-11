@@ -50,6 +50,13 @@ def execute_function_call(name: str, args: dict) -> dict:
             robot_service.cancel_command()
             return {"success": True, "message": "Command cancelled"}
 
+        elif name == "capture_camera":
+            img = robot_service.get_front_camera_image()
+            if img and hasattr(img, "data") and img.data:
+                return {"success": True, "message": "Camera frame captured, image attached"}
+            else:
+                return {"success": False, "error": "Camera not available"}
+
         else:
             return {"error": f"Unknown function: {name}"}
 
@@ -333,6 +340,21 @@ class GeminiLiveSession:
                 }
                 if self.gemini_ws:
                     await self.gemini_ws.send(json.dumps(tool_response))
+
+                    # For capture_camera, also send the image as realtime input
+                    if fn_name == "capture_camera" and result.get("success"):
+                        img = robot_service.get_front_camera_image()
+                        if img and hasattr(img, "data") and img.data:
+                            b64_data = base64.b64encode(img.data).decode("utf-8")
+                            img_msg = {
+                                "realtimeInput": {
+                                    "mediaChunks": [{
+                                        "mimeType": "image/jpeg",
+                                        "data": b64_data,
+                                    }]
+                                }
+                            }
+                            await self.gemini_ws.send(json.dumps(img_msg))
 
         # Handle toolCallCancellation
         elif "toolCallCancellation" in msg:
