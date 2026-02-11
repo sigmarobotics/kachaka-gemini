@@ -1,6 +1,7 @@
 import asyncio
 import traceback
 import uuid
+from datetime import datetime, timezone, timedelta
 
 from google import genai
 from google.genai import types
@@ -52,6 +53,10 @@ class GeminiTextSession:
         if robot_info:
             sections.append(f"[Robot Background Info]\n{robot_info}")
         system_prompt = "\n\n".join(sections)
+        # Inject local time (UTC+8) into {{CURRENT_TIME}} placeholder
+        utc8 = timezone(timedelta(hours=8))
+        current_time = datetime.now(utc8).strftime("%Y-%m-%d %H:%M:%S")
+        system_prompt = system_prompt.replace("{{CURRENT_TIME}}", current_time)
         print(f"[TextAPI] System instruction ({len(system_prompt)} chars):\n{system_prompt[:500]}")
 
         # Build tools — REST API requires combining into a single Tool object

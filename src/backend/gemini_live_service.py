@@ -3,6 +3,7 @@ import json
 import base64
 import traceback
 import uuid
+from datetime import datetime, timezone, timedelta
 import websockets
 from robot_service import robot_service
 import settings_service
@@ -109,6 +110,10 @@ class GeminiLiveSession:
                 "系統會自動播放過渡語音通知使用者。"
             )
         system_prompt = "\n\n".join(sections)
+        # Inject local time (UTC+8) into {{CURRENT_TIME}} placeholder
+        utc8 = timezone(timedelta(hours=8))
+        current_time = datetime.now(utc8).strftime("%Y-%m-%d %H:%M:%S")
+        system_prompt = system_prompt.replace("{{CURRENT_TIME}}", current_time)
         print(f"System instruction ({len(system_prompt)} chars):\n{system_prompt[:500]}")
 
         voice_name = settings.get("voice_name", "Aoede")
