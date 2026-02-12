@@ -59,15 +59,12 @@ class GeminiTextSession:
         system_prompt = system_prompt.replace("{{CURRENT_TIME}}", current_time)
         print(f"[TextAPI] System instruction ({len(system_prompt)} chars):\n{system_prompt[:500]}")
 
-        # Build tools — REST API requires combining into a single Tool object
-        # (unlike Live API which accepts multiple separate Tool objects)
         func_decls = settings.get("function_declarations", DEFAULT_FUNCTION_DECLARATIONS)
         enable_google_search = settings.get("enable_google_search", False)
 
-        tool_kwargs = {"function_declarations": func_decls}
+        tool_list = [types.Tool(function_declarations=func_decls)]
         if enable_google_search:
-            tool_kwargs["google_search"] = types.GoogleSearch()
-        tool_list = [types.Tool(**tool_kwargs)]
+            tool_list.append(types.Tool(google_search=types.GoogleSearch()))
 
         self._config = types.GenerateContentConfig(
             system_instruction=system_prompt if system_prompt else None,
