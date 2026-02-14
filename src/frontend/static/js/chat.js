@@ -375,6 +375,24 @@ function handleServerMessage(msg) {
             break;
         }
 
+        case 'function_call_blocked':
+            appendSystemMessage(
+                `Blocked: ${escapeHtml(msg.name)}(${escapeHtml(JSON.stringify(msg.args))}) — skipped due to Google Search`
+            );
+            break;
+
+        case 'google_search': {
+            if (msg.sources && msg.sources.length > 0) {
+                const srcList = msg.sources
+                    .map(s => s.uri ? `<a href="${escapeHtml(s.uri)}" target="_blank">${escapeHtml(s.title || s.uri)}</a>` : escapeHtml(s.title))
+                    .join(', ');
+                appendSystemMessage(`Google Search sources: ${srcList}`, {html: true});
+            } else {
+                appendSystemMessage('Google Search: used (no sources returned)');
+            }
+            break;
+        }
+
         case 'turn_complete': {
             // Finalize any streaming model message
             const streamingMsg = document.querySelector('.chat-message.model.streaming');
@@ -408,7 +426,7 @@ function handleServerMessage(msg) {
             break;
 
         case 'error':
-            appendSystemMessage(`Error: ${escapeHtml(msg.message)}`, true);
+            appendSystemMessage(`Error: ${escapeHtml(msg.message)}`, {isError: true});
             break;
     }
 }
@@ -468,11 +486,15 @@ function updateModelMessage(text) {
     }
 }
 
-function appendSystemMessage(text, isError = false) {
+function appendSystemMessage(text, {html = false, isError = false} = {}) {
     const messagesDiv = document.getElementById('chat-messages');
     const div = document.createElement('div');
     div.className = `chat-message system${isError ? ' error' : ''}`;
-    div.textContent = text;
+    if (html) {
+        div.innerHTML = text;
+    } else {
+        div.textContent = text;
+    }
     messagesDiv.appendChild(div);
     messagesDiv.scrollTop = messagesDiv.scrollHeight;
 }

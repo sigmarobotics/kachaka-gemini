@@ -62,9 +62,10 @@ class GeminiTextSession:
         func_decls = settings.get("function_declarations", DEFAULT_FUNCTION_DECLARATIONS)
         enable_google_search = settings.get("enable_google_search", False)
 
-        tool_list = [types.Tool(function_declarations=func_decls)]
+        tool_kwargs = {"function_declarations": func_decls}
         if enable_google_search:
-            tool_list.append(types.Tool(google_search=types.GoogleSearch()))
+            tool_kwargs["google_search"] = types.GoogleSearch()
+        tool_list = [types.Tool(**tool_kwargs)]
 
         self._config = types.GenerateContentConfig(
             system_instruction=system_prompt if system_prompt else None,
@@ -147,9 +148,42 @@ class GeminiTextSession:
             # Append model content to history (SDK preserves thought signatures)
             self._history.append(model_content)
 
+            # Check if Google Search grounding was used
+            grounding = getattr(candidate, "grounding_metadata", None)
+            used_google_search = bool(
+                grounding and getattr(grounding, "search_entry_point", None)
+            )
+
             # Separate function calls and text parts
             function_call_parts = [p for p in model_content.parts if p.function_call]
             text_parts = [p for p in model_content.parts if p.text is not None]
+
+            # If Google Search and function calls both present, block function calls
+            if used_google_search and function_call_parts:
+                print(f"[TextAPI] Google Search + function call conflict — blocking function calls")
+
+                # Notify frontend about the blocked function calls
+                for part in function_call_parts:
+                    fc = part.function_call
+                    await self._send_to_client({
+                        "type": "function_call_blocked",
+                        "name": fc.name,
+                        "args": dict(fc.args) if fc.args else {},
+                    })
+
+                # Send Google Search grounding info
+                await self._send_google_search_info(grounding)
+
+                # Send text response if available
+                if text_parts:
+                    full_text = "".join(p.text for p in text_parts)
+                    await self._send_to_client({
+                        "type": "text",
+                        "content": full_text,
+                    })
+
+                await self._send_to_client({"type": "turn_complete"})
+                return
 
             if function_call_parts:
                 # Execute function calls and build responses
@@ -198,6 +232,10 @@ class GeminiTextSession:
                 continue  # Loop to call API again
 
             elif text_parts:
+                # Send Google Search grounding info if present
+                if used_google_search:
+                    await self._send_google_search_info(grounding)
+
                 full_text = "".join(p.text for p in text_parts)
                 await self._send_to_client({
                     "type": "text",
@@ -209,6 +247,22 @@ class GeminiTextSession:
             else:
                 await self._send_to_client({"type": "turn_complete"})
                 return
+
+    async def _send_google_search_info(self, grounding):
+        """Send Google Search grounding metadata to the frontend."""
+        chunks = getattr(grounding, "grounding_chunks", None) or []
+        sources = []
+        for chunk in chunks:
+            web = getattr(chunk, "web", None)
+            if web:
+                sources.append({
+                    "title": getattr(web, "title", "") or "",
+                    "uri": getattr(web, "uri", "") or "",
+                })
+        await self._send_to_client({
+            "type": "google_search",
+            "sources": sources,
+        })
 
     async def _send_to_client(self, msg: dict):
         if self._closed:
