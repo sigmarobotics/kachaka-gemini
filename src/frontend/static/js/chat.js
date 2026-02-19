@@ -35,6 +35,9 @@ export function initChat() {
             sendTextMessage();
         }
     });
+
+    document.getElementById('btn-clear-chat')?.addEventListener('click', clearChat);
+    document.getElementById('btn-export-chat')?.addEventListener('click', exportChat);
 }
 
 function toggleConnection() {
@@ -108,6 +111,50 @@ function disconnect() {
     updateConnectionUI(false);
 }
 
+function clearChat() {
+    if (!confirm('Clear chat history? This cannot be undone.')) return;
+
+    // Send to backend if connected (clears server-side history)
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'clear_history' }));
+    }
+
+    // Clear frontend
+    const messagesDiv = document.getElementById('chat-messages');
+    if (messagesDiv) {
+        messagesDiv.innerHTML = '';
+        appendSystemMessage('Chat history cleared.');
+    }
+    currentModelText = '';
+    sessionTokenTotal = 0;
+    updateSessionTokenDisplay();
+}
+
+function exportChat() {
+    const messagesDiv = document.getElementById('chat-messages');
+    if (!messagesDiv) return;
+
+    const messages = [];
+    messagesDiv.querySelectorAll('.chat-message').forEach(el => {
+        let role = 'system';
+        if (el.classList.contains('user')) role = 'user';
+        else if (el.classList.contains('model')) role = 'model';
+
+        const content = el.querySelector('.msg-content')?.textContent || el.textContent || '';
+        messages.push({ role, content, timestamp: new Date().toISOString() });
+    });
+
+    const blob = new Blob([JSON.stringify(messages, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const now = new Date();
+    const ts = now.toISOString().slice(0, 16).replace('T', '-').replace(':', '');
+    a.href = url;
+    a.download = `chat-export-${ts}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
 function updateConnectionUI(connected) {
     isConnected = connected;
     const connectBtn = document.getElementById('btn-connect');
@@ -132,6 +179,9 @@ function updateConnectionUI(connected) {
     micBtn.style.display = isTextMode ? 'none' : '';
     sendBtn.disabled = !connected;
     chatInput.disabled = !connected;
+
+    const clearBtn = document.getElementById('btn-clear-chat');
+    if (clearBtn) clearBtn.disabled = !connected;
 }
 
 function sendTextMessage() {
@@ -423,6 +473,10 @@ function handleServerMessage(msg) {
         case 'token_usage':
             sessionTokenTotal += msg.total || 0;
             updateSessionTokenDisplay();
+            break;
+
+        case 'history_cleared':
+            appendSystemMessage(msg.message || 'History cleared');
             break;
 
         case 'error':

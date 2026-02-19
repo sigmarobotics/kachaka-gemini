@@ -1484,6 +1484,31 @@ input[type="number"]:focus {
     white-space: nowrap;
 }
 
+.btn-chat-action {
+    font-family: var(--font-display);
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    padding: 6px 12px;
+    background: var(--panel-mid);
+    color: var(--text-muted);
+    border: 1px solid var(--border-subtle);
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.btn-chat-action:hover {
+    background: var(--amber-subtle);
+    color: var(--amber);
+    border-color: var(--amber-dim);
+}
+
+.btn-chat-action:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+}
+
 /* ═══ TOKEN STATS ═══ */
 
 .token-stats {

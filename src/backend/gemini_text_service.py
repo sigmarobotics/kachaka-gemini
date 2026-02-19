@@ -301,5 +301,9 @@ class GeminiTextSession:
         except Exception:
             pass
 
+    def clear_history(self):
+        """Clear the conversation history."""
+        self._history = []
+
     async def close(self):
         self._closed = True
