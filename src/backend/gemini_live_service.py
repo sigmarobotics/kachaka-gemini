@@ -121,6 +121,11 @@ class GeminiLiveSession:
         self._response_mode = settings.get("response_mode", "audio")
         enable_google_search = settings.get("live_enable_google_search", False)
 
+        live_temperature = settings.get("live_temperature", 1.0)
+        live_max_output_tokens = settings.get("live_max_output_tokens", 8192)
+        live_top_p = settings.get("live_top_p", 0.95)
+        live_top_k = settings.get("live_top_k", 40)
+
         url = f"{GEMINI_WS_URL}?key={api_key}"
 
         try:
@@ -136,6 +141,10 @@ class GeminiLiveSession:
                     print(f"Text mode: switched model to {model}")
                 generation_config = {
                     "responseModalities": ["TEXT"],
+                    "temperature": live_temperature,
+                    "maxOutputTokens": live_max_output_tokens,
+                    "topP": live_top_p,
+                    "topK": live_top_k,
                 }
             else:
                 generation_config = {
@@ -145,6 +154,10 @@ class GeminiLiveSession:
                             "prebuiltVoiceConfig": {"voiceName": voice_name}
                         }
                     },
+                    "temperature": live_temperature,
+                    "maxOutputTokens": live_max_output_tokens,
+                    "topP": live_top_p,
+                    "topK": live_top_k,
                 }
 
             # Build tools list

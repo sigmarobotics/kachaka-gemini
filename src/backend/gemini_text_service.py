@@ -67,9 +67,29 @@ class GeminiTextSession:
             tool_kwargs["google_search"] = types.GoogleSearch()
         tool_list = [types.Tool(**tool_kwargs)]
 
+        # Generation parameters
+        temperature = settings.get("text_temperature", 1.0)
+        max_output_tokens = settings.get("text_max_output_tokens", 8192)
+        top_p = settings.get("text_top_p", 0.95)
+        top_k = settings.get("text_top_k", 40)
+        raw_safety = settings.get("text_safety_settings", {})
+
+        # Build safety settings list
+        safety_settings = None
+        if raw_safety:
+            safety_settings = [
+                types.SafetySetting(category=cat, threshold=thresh)
+                for cat, thresh in raw_safety.items()
+            ]
+
         self._config = types.GenerateContentConfig(
             system_instruction=system_prompt if system_prompt else None,
             tools=tool_list,
+            temperature=temperature,
+            max_output_tokens=max_output_tokens,
+            top_p=top_p,
+            top_k=top_k,
+            safety_settings=safety_settings,
         )
         self._history = []
 
