@@ -249,10 +249,12 @@ DEFAULT_KNOWLEDGE_BASE = _json.dumps({
 
 DEFAULT_SETTINGS = {
     "gemini_api_key": "",
-    "api_mode": "text",                # "live" or "text"
-    "gemini_model": "gemini-3-flash-preview",
-    "response_mode": "text",           # "audio" or "text"
-    "enable_google_search": True,
+    "api_mode": "text",
+    "text_model": "gemini-3-flash-preview",
+    "live_model": "gemini-2.0-flash-live-001",
+    "response_mode": "text",
+    "text_enable_google_search": True,
+    "live_enable_google_search": False,
     "persona": DEFAULT_PERSONA,
     "static_knowledge": DEFAULT_STATIC_KNOWLEDGE,
     "knowledge_base": DEFAULT_KNOWLEDGE_BASE,

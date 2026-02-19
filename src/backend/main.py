@@ -201,7 +201,7 @@ async def generate_interim_audio(request: Request):
     if not api_key:
         return JSONResponse({"error": "Gemini API key not configured"}, status_code=400)
 
-    model = settings.get("gemini_model", "gemini-2.5-flash-native-audio-latest")
+    model = settings.get("live_model", "gemini-2.5-flash-native-audio-latest")
     voice_name = settings.get("voice_name", "Aoede")
 
     url = f"{GEMINI_WS_URL}?key={api_key}"

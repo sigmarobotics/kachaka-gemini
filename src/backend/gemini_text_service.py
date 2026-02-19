@@ -35,7 +35,7 @@ class GeminiTextSession:
             })
             return False
 
-        self._model = settings.get("gemini_model", "gemini-3-flash-preview")
+        self._model = settings.get("text_model", "gemini-3-flash-preview")
         self._client = genai.Client(api_key=api_key)
 
         # Build system instruction (same logic as Live session)
@@ -60,7 +60,7 @@ class GeminiTextSession:
         print(f"[TextAPI] System instruction ({len(system_prompt)} chars):\n{system_prompt[:500]}")
 
         func_decls = settings.get("function_declarations", DEFAULT_FUNCTION_DECLARATIONS)
-        enable_google_search = settings.get("enable_google_search", False)
+        enable_google_search = settings.get("text_enable_google_search", False)
 
         tool_kwargs = {"function_declarations": func_decls}
         if enable_google_search:

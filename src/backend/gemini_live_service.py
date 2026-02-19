@@ -87,7 +87,7 @@ class GeminiLiveSession:
             })
             return False
 
-        model = settings.get("gemini_model", "gemini-2.0-flash-live-001")
+        model = settings.get("live_model", "gemini-2.0-flash-live-001")
 
         # Build system instruction from sections
         sections = []
@@ -119,7 +119,7 @@ class GeminiLiveSession:
         voice_name = settings.get("voice_name", "Aoede")
         func_decls = settings.get("function_declarations", DEFAULT_FUNCTION_DECLARATIONS)
         self._response_mode = settings.get("response_mode", "audio")
-        enable_google_search = settings.get("enable_google_search", False)
+        enable_google_search = settings.get("live_enable_google_search", False)
 
         url = f"{GEMINI_WS_URL}?key={api_key}"
 
