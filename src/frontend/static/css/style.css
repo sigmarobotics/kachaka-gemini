@@ -906,6 +906,170 @@ input[type="number"]:focus {
     width: 100%;
 }
 
+/* ═══ FUNCTION EDITOR ═══ */
+
+.func-editor {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.func-card {
+    border: 1px solid var(--border-subtle);
+    background: var(--void);
+}
+
+.func-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 14px;
+    background: var(--panel-mid);
+    cursor: pointer;
+    user-select: none;
+    transition: background 0.15s ease;
+}
+
+.func-card-header:hover {
+    background: var(--panel-hover);
+}
+
+.func-card-name {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.func-card.open .func-card-name {
+    color: var(--amber);
+}
+
+.func-card-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.func-card-arrow {
+    font-size: 10px;
+    color: var(--text-muted);
+    transition: transform 0.2s ease;
+}
+
+.func-card.open .func-card-arrow {
+    transform: rotate(180deg);
+    color: var(--amber);
+}
+
+.func-card-delete {
+    font-size: 10px;
+    color: var(--text-muted);
+    background: none;
+    border: 1px solid transparent;
+    cursor: pointer;
+    padding: 2px 6px;
+    font-family: var(--font-display);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+}
+
+.func-card-delete:hover {
+    color: var(--coral);
+    border-color: var(--coral-dim);
+    background: rgba(220, 53, 69, 0.06);
+}
+
+.func-card-body {
+    display: none;
+    padding: 14px;
+    border-top: 1px solid var(--border-subtle);
+}
+
+.func-card.open .func-card-body {
+    display: block;
+}
+
+.func-card-body .form-group {
+    margin-bottom: 12px;
+}
+
+.func-card-body .form-group:last-child {
+    margin-bottom: 0;
+}
+
+.param-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 11px;
+}
+
+.param-table th {
+    font-family: var(--font-display);
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    text-align: left;
+    padding: 6px 8px;
+    background: var(--panel-dark);
+    border: 1px solid var(--border-subtle);
+}
+
+.param-table td {
+    padding: 4px 6px;
+    border: 1px solid var(--border-subtle);
+    vertical-align: middle;
+}
+
+.param-table input[type="text"],
+.param-table select {
+    font-size: 11px;
+    padding: 6px 8px;
+    width: 100%;
+    border: 1px solid var(--border-subtle);
+}
+
+.param-table input[type="checkbox"] {
+    width: 14px;
+    height: 14px;
+}
+
+.param-table .param-delete-btn {
+    font-size: 9px;
+    padding: 2px 6px;
+    color: var(--text-muted);
+    background: none;
+    border: 1px solid transparent;
+    cursor: pointer;
+}
+
+.param-table .param-delete-btn:hover {
+    color: var(--coral);
+    border-color: var(--coral-dim);
+}
+
+.btn-add-param {
+    font-family: var(--font-display);
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    padding: 4px 10px;
+    background: var(--panel-mid);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-subtle);
+    cursor: pointer;
+    margin-top: 6px;
+}
+
+.btn-add-param:hover {
+    background: var(--amber-subtle);
+    color: var(--amber);
+    border-color: var(--amber-dim);
+}
+
 .form-group {
     display: flex;
     flex-direction: column;

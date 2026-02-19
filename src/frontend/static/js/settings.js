@@ -60,7 +60,6 @@ export async function loadSettings() {
         const shelfIdsInput = document.getElementById('setting-shelf-ids');
         const cameraToggle = document.getElementById('setting-camera-to-ai');
         const robotIpDisplay = document.getElementById('setting-robot-ip');
-        const funcDeclInput = document.getElementById('setting-function-declarations');
         const interimToggle = document.getElementById('setting-enable-interim');
         const interimPhrasesInput = document.getElementById('setting-interim-phrases');
 
@@ -106,12 +105,9 @@ export async function loadSettings() {
         const robotInfoInput = document.getElementById('setting-robot-info');
         if (robotInfoInput) robotInfoInput.value = settings.robot_background_info || '';
 
-        // Function declarations
-        if (funcDeclInput) {
-            const decls = settings.function_declarations || [];
-            funcDeclInput.value = JSON.stringify(decls, null, 2);
-            clearJsonError('func-decl-error');
-        }
+        // Function declarations — graphical editor
+        const funcDecls = settings.function_declarations || [];
+        renderFuncEditor(funcDecls);
 
         // Interim response
         if (interimToggle) interimToggle.checked = settings.enable_interim_response || false;
@@ -271,9 +267,18 @@ export function initSettings() {
     document.getElementById('btn-reset-func-decl')
         ?.addEventListener('click', resetFuncDecl);
 
+    // Add Function button
+    document.getElementById('btn-add-function')
+        ?.addEventListener('click', () => {
+            const container = document.getElementById('func-editor');
+            if (!container) return;
+            const index = container.querySelectorAll('.func-card').length;
+            const newCard = renderFuncCard({ name: '', description: '', parameters: { type: 'object', properties: {}, required: [] } }, index);
+            container.insertAdjacentHTML('beforeend', newCard);
+            container.lastElementChild?.classList.add('open');
+        });
+
     // Live JSON validation
-    document.getElementById('setting-function-declarations')
-        ?.addEventListener('input', () => validateJsonInput('setting-function-declarations', 'func-decl-error', 'array'));
     document.getElementById('setting-interim-phrases')
         ?.addEventListener('input', () => validateJsonInput('setting-interim-phrases', 'interim-phrases-error', 'object'));
 
@@ -345,6 +350,149 @@ function validateJsonInput(textareaId, errorElId, expectedType) {
     }
 }
 
+// ─── Function Declarations Editor ────────────────────────────────────────────
+
+function escapeAttr(str) {
+    return String(str).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function renderFuncEditor(declarations) {
+    const container = document.getElementById('func-editor');
+    if (!container) return;
+    container.innerHTML = declarations.map((fn, i) => renderFuncCard(fn, i)).join('');
+}
+
+function renderFuncCard(fn, index) {
+    const name = fn.name || '';
+    const desc = fn.description || '';
+    const params = fn.parameters || { type: 'object', properties: {}, required: [] };
+    const props = params.properties || {};
+    const required = params.required || [];
+
+    return `
+    <div class="func-card" data-index="${index}">
+        <div class="func-card-header" onclick="this.parentElement.classList.toggle('open')">
+            <span class="func-card-name">${escapeAttr(name) || '(unnamed)'}</span>
+            <div class="func-card-actions">
+                <span class="func-card-arrow">&#9660;</span>
+                <button class="func-card-delete" onclick="event.stopPropagation(); deleteFuncCard(${index})" title="Delete">DEL</button>
+            </div>
+        </div>
+        <div class="func-card-body">
+            <div class="form-group">
+                <label>Name</label>
+                <input type="text" class="func-name" value="${escapeAttr(name)}" placeholder="function_name">
+            </div>
+            <div class="form-group">
+                <label>Description</label>
+                <textarea class="func-desc" rows="2" placeholder="Function description...">${escapeAttr(desc)}</textarea>
+            </div>
+            <div class="form-group">
+                <label>Parameters</label>
+                ${renderParamTable(props, required, index)}
+                <button class="btn-add-param" onclick="addParam(${index})">+ Add Parameter</button>
+            </div>
+        </div>
+    </div>`;
+}
+
+function renderParamTable(properties, required, funcIndex) {
+    const paramEntries = Object.entries(properties);
+    const headerRow = '<thead><tr><th>Name</th><th>Type</th><th>Description</th><th>Enum</th><th>Req</th><th></th></tr></thead>';
+
+    if (paramEntries.length === 0) {
+        return `<table class="param-table" data-func="${funcIndex}">${headerRow}<tbody></tbody></table>`;
+    }
+
+    const rows = paramEntries.map(([pName, pDef]) => {
+        const pType = pDef.type || 'string';
+        const pDesc = pDef.description || '';
+        const pEnum = (pDef.enum || []).join(', ');
+        const isReq = required.includes(pName);
+        return `<tr>
+            <td><input type="text" class="param-name" value="${escapeAttr(pName)}"></td>
+            <td><select class="param-type">
+                <option value="string"${pType === 'string' ? ' selected' : ''}>string</option>
+                <option value="number"${pType === 'number' ? ' selected' : ''}>number</option>
+                <option value="integer"${pType === 'integer' ? ' selected' : ''}>integer</option>
+                <option value="boolean"${pType === 'boolean' ? ' selected' : ''}>boolean</option>
+            </select></td>
+            <td><input type="text" class="param-desc" value="${escapeAttr(pDesc)}"></td>
+            <td><input type="text" class="param-enum" value="${escapeAttr(pEnum)}" placeholder="a, b, c"></td>
+            <td style="text-align:center"><input type="checkbox" class="param-required"${isReq ? ' checked' : ''}></td>
+            <td><button class="param-delete-btn" onclick="deleteParamRow(this)">DEL</button></td>
+        </tr>`;
+    }).join('');
+
+    return `<table class="param-table" data-func="${funcIndex}">${headerRow}<tbody>${rows}</tbody></table>`;
+}
+
+function collectFuncDeclarations() {
+    const cards = document.querySelectorAll('.func-card');
+    const result = [];
+    cards.forEach(card => {
+        const name = card.querySelector('.func-name')?.value?.trim() || '';
+        const desc = card.querySelector('.func-desc')?.value?.trim() || '';
+        const properties = {};
+        const required = [];
+
+        card.querySelectorAll('.param-table tbody tr').forEach(row => {
+            const pName = row.querySelector('.param-name')?.value?.trim();
+            if (!pName) return;
+            const pType = row.querySelector('.param-type')?.value || 'string';
+            const pDesc = row.querySelector('.param-desc')?.value?.trim() || '';
+            const pEnumStr = row.querySelector('.param-enum')?.value?.trim() || '';
+            const isReq = row.querySelector('.param-required')?.checked || false;
+
+            const propDef = { type: pType, description: pDesc };
+            if (pEnumStr) {
+                propDef.enum = pEnumStr.split(',').map(s => s.trim()).filter(s => s);
+            }
+            properties[pName] = propDef;
+            if (isReq) required.push(pName);
+        });
+
+        result.push({
+            name,
+            description: desc,
+            parameters: { type: 'object', properties, required },
+        });
+    });
+    return result;
+}
+
+// Global functions for onclick handlers
+window.deleteFuncCard = function(index) {
+    const card = document.querySelector(`.func-card[data-index="${index}"]`);
+    if (card && confirm('Delete this function?')) card.remove();
+};
+
+window.addParam = function(funcIndex) {
+    const card = document.querySelector(`.func-card[data-index="${funcIndex}"]`);
+    if (!card) return;
+    const tbody = card.querySelector('.param-table tbody');
+    if (!tbody) return;
+    const row = document.createElement('tr');
+    row.innerHTML = `
+        <td><input type="text" class="param-name" value="" placeholder="param_name"></td>
+        <td><select class="param-type">
+            <option value="string" selected>string</option>
+            <option value="number">number</option>
+            <option value="integer">integer</option>
+            <option value="boolean">boolean</option>
+        </select></td>
+        <td><input type="text" class="param-desc" value=""></td>
+        <td><input type="text" class="param-enum" value="" placeholder="a, b, c"></td>
+        <td style="text-align:center"><input type="checkbox" class="param-required"></td>
+        <td><button class="param-delete-btn" onclick="deleteParamRow(this)">DEL</button></td>
+    `;
+    tbody.appendChild(row);
+};
+
+window.deleteParamRow = function(btn) {
+    btn.closest('tr').remove();
+};
+
 // ─── Save ────────────────────────────────────────────────────────────────────
 
 async function saveSettings() {
@@ -360,15 +508,10 @@ async function saveSettings() {
     const liveGoogleSearch = document.getElementById('setting-live-google-search');
     const shelfIdsInput = document.getElementById('setting-shelf-ids');
     const cameraToggle = document.getElementById('setting-camera-to-ai');
-    const funcDeclInput = document.getElementById('setting-function-declarations');
     const interimToggle = document.getElementById('setting-enable-interim');
     const interimPhrasesInput = document.getElementById('setting-interim-phrases');
 
     // Validate JSON fields
-    if (!validateJsonInput('setting-function-declarations', 'func-decl-error', 'array')) {
-        showJsonError('func-decl-error', 'Fix JSON errors before saving');
-        return;
-    }
     if (!validateJsonInput('setting-interim-phrases', 'interim-phrases-error', 'object')) {
         showJsonError('interim-phrases-error', 'Fix JSON errors before saving');
         return;
@@ -402,15 +545,8 @@ async function saveSettings() {
     const robotInfoInput = document.getElementById('setting-robot-info');
     if (robotInfoInput) updates.robot_background_info = robotInfoInput.value;
 
-    // Parse function declarations
-    if (funcDeclInput && funcDeclInput.value.trim()) {
-        try {
-            updates.function_declarations = JSON.parse(funcDeclInput.value.trim());
-        } catch (e) {
-            showJsonError('func-decl-error', `Invalid JSON: ${e.message}`);
-            return;
-        }
-    }
+    // Function declarations from graphical editor
+    updates.function_declarations = collectFuncDeclarations();
 
     // Parse interim phrases
     if (interimPhrasesInput && interimPhrasesInput.value.trim()) {
@@ -494,14 +630,8 @@ function downloadSystemInstruction() {
 }
 
 function downloadFuncDecl() {
-    const textarea = document.getElementById('setting-function-declarations');
-    if (!textarea) return;
-    try {
-        const data = JSON.parse(textarea.value.trim());
-        downloadJson(data, 'function_declarations.json');
-    } catch (e) {
-        showJsonError('func-decl-error', 'Fix JSON errors before downloading');
-    }
+    const data = collectFuncDeclarations();
+    downloadJson(data, 'function_declarations.json');
 }
 
 function uploadSystemInstruction(event) {
@@ -534,20 +664,16 @@ function uploadFuncDecl(event) {
     reader.onload = (e) => {
         try {
             const data = JSON.parse(e.target.result);
-            const textarea = document.getElementById('setting-function-declarations');
-            if (textarea) {
-                let decls;
-                if (Array.isArray(data)) {
-                    decls = data;
-                } else if (Array.isArray(data.function_declarations)) {
-                    decls = data.function_declarations;
-                } else {
-                    alert('Expected a JSON array or { "function_declarations": [...] }');
-                    return;
-                }
-                textarea.value = JSON.stringify(decls, null, 2);
-                clearJsonError('func-decl-error');
+            let decls;
+            if (Array.isArray(data)) {
+                decls = data;
+            } else if (Array.isArray(data.function_declarations)) {
+                decls = data.function_declarations;
+            } else {
+                alert('Expected a JSON array or { "function_declarations": [...] }');
+                return;
             }
+            renderFuncEditor(decls);
         } catch (err) {
             alert('Invalid JSON file');
         }
@@ -607,17 +733,12 @@ async function resetFuncDecl() {
         const res = await fetch('/api/settings/defaults');
         if (res.ok) {
             const defaults = await res.json();
-            const textarea = document.getElementById('setting-function-declarations');
-            if (textarea && defaults.function_declarations) {
-                textarea.value = JSON.stringify(defaults.function_declarations, null, 2);
-                clearJsonError('func-decl-error');
+            if (defaults.function_declarations) {
+                renderFuncEditor(defaults.function_declarations);
             }
-        } else {
-            await loadSettings();
         }
     } catch (e) {
         console.error('Failed to fetch defaults:', e);
-        await loadSettings();
     }
 }
 

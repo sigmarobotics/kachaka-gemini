@@ -188,18 +188,17 @@
                             </div>
 
                             <h3 class="settings-section-title">Function Declarations</h3>
-                            <div class="form-group">
-                                <label>Editable function declarations (JSON array)</label>
-                                <textarea id="setting-function-declarations" rows="16" class="json-editor" placeholder="[...]" spellcheck="false"></textarea>
-                                <div id="func-decl-error" class="json-error" style="display: none;"></div>
-                                <div class="json-actions">
-                                    <button class="btn-small" id="btn-download-func-decl">Download .json</button>
-                                    <label class="btn-small btn-upload">
-                                        Upload .json
-                                        <input type="file" id="upload-func-decl" accept=".json" hidden>
-                                    </label>
-                                    <button class="btn-small btn-reset" id="btn-reset-func-decl">Reset to Default</button>
-                                </div>
+                            <div id="func-editor" class="func-editor">
+                                <!-- Function cards rendered by JS -->
+                            </div>
+                            <div class="json-actions">
+                                <button class="btn-small" id="btn-add-function">+ Add Function</button>
+                                <button class="btn-small" id="btn-download-func-decl">Download .json</button>
+                                <label class="btn-small btn-upload">
+                                    Upload .json
+                                    <input type="file" id="upload-func-decl" accept=".json" hidden>
+                                </label>
+                                <button class="btn-small btn-reset" id="btn-reset-func-decl">Reset to Default</button>
                             </div>
 
                             <h3 class="settings-section-title">Token Usage</h3>
