@@ -94,165 +94,204 @@
                 <div class="header" style="width: 100%; max-width: 800px; margin: 0 auto;">
                     <h1>Settings</h1>
                 </div>
+
+                <!-- Settings Sub-Tabs -->
+                <div class="settings-tabs" style="width: 100%; max-width: 800px; margin: 0 auto;">
+                    <button class="settings-tab-btn active" data-settings-tab="general">General</button>
+                    <button class="settings-tab-btn" data-settings-tab="text-api">Text API</button>
+                    <button class="settings-tab-btn" data-settings-tab="live-api">Live API</button>
+                </div>
+
                 <div class="settings-container">
-                    <div class="settings-column">
-                        <h3 class="settings-section-title">Gemini Configuration</h3>
 
-                        <div class="form-group">
-                            <label>Gemini API Key</label>
-                            <input type="password" id="setting-api-key" placeholder="Enter Gemini API Key">
-                        </div>
-                        <div class="form-group">
-                            <label>API Mode</label>
-                            <select id="setting-api-mode">
-                                <option value="live">Live API (Streaming Audio/Text)</option>
-                                <option value="text">Text API (REST)</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label>Gemini Model</label>
-                            <div class="model-select-row">
-                                <select id="setting-model">
-                                    <option value="gemini-2.5-flash-native-audio-latest">gemini-2.5-flash-native-audio-latest</option>
-                                    <option value="gemini-2.0-flash-live-001">gemini-2.0-flash-live-001</option>
-                                    <option value="gemini-3-flash-preview">gemini-3-flash-preview</option>
+                    <!-- ═══ GENERAL TAB ═══ -->
+                    <div class="settings-pane" id="settings-pane-general">
+                        <div class="settings-column">
+                            <h3 class="settings-section-title">Gemini Configuration</h3>
+
+                            <div class="form-group">
+                                <label>Gemini API Key</label>
+                                <input type="password" id="setting-api-key" placeholder="Enter Gemini API Key">
+                            </div>
+                            <div class="form-group">
+                                <label>API Mode</label>
+                                <select id="setting-api-mode">
+                                    <option value="live">Live API (Streaming Audio/Text)</option>
+                                    <option value="text">Text API (REST)</option>
                                 </select>
-                                <button class="btn-small btn-query-models" id="btn-query-models">Query</button>
                             </div>
-                        </div>
-                        <div class="form-group">
-                            <label>Response Mode</label>
-                            <select id="setting-response-mode">
-                                <option value="audio">Voice (Audio)</option>
-                                <option value="text">Text Only</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label>Voice</label>
-                            <select id="setting-voice">
-                                <option value="Puck">Puck</option>
-                                <option value="Charon">Charon</option>
-                                <option value="Kore">Kore</option>
-                                <option value="Fenrir">Fenrir</option>
-                                <option value="Aoede" selected>Aoede</option>
-                            </select>
-                        </div>
-                        <div class="form-group" style="flex-direction: row; align-items: center; gap: 12px;">
-                            <input type="checkbox" id="setting-google-search" style="width: auto;">
-                            <label for="setting-google-search" style="margin: 0; cursor: pointer;">Enable Google Search (Grounding)</label>
-                        </div>
+                            <div class="form-group">
+                                <label>Robot IP (from environment)</label>
+                                <span id="setting-robot-ip" class="setting-display-value">N/A</span>
+                            </div>
+                            <div class="form-group">
+                                <label>Shelf IDs (comma separated)</label>
+                                <input type="text" id="setting-shelf-ids" placeholder="shelf_1, shelf_2">
+                            </div>
 
-                        <h3 class="settings-section-title">System Instruction</h3>
-                        <p class="settings-hint">Connect 時會依序注入: Persona → Function Usage Rules → Knowledge Base → Robot Background Info</p>
-                        <div class="form-group">
-                            <label>Persona — AI 助手的角色與語氣</label>
-                            <textarea id="setting-persona" rows="4" placeholder="定義 AI 助手的角色、語氣、回答語言..."></textarea>
-                        </div>
-                        <div class="form-group">
-                            <label>Function Usage Rules — 功能使用規則</label>
-                            <textarea id="setting-static-knowledge" rows="5" placeholder="功能呼叫規則、ID 使用方式等..."></textarea>
-                        </div>
-                        <div class="form-group">
-                            <label>Knowledge Base — 背景知識文檔</label>
-                            <textarea id="setting-knowledge-base" rows="8" class="json-editor" placeholder="上傳 JSON 文檔或手動輸入背景知識..." spellcheck="false"></textarea>
-                            <div class="json-actions">
-                                <label class="btn-small btn-upload">
-                                    Upload (.json / .txt / .md)
-                                    <input type="file" id="upload-knowledge-base" accept=".json,.txt,.md" multiple hidden>
-                                </label>
-                                <button class="btn-small btn-reset" id="btn-clear-knowledge-base">Clear</button>
+                            <h3 class="settings-section-title">System Instruction</h3>
+                            <p class="settings-hint">Connect 時會依序注入: Persona → Function Usage Rules → Knowledge Base → Robot Background Info</p>
+                            <div class="form-group">
+                                <label>Persona — AI 助手的角色與語氣</label>
+                                <textarea id="setting-persona" rows="4" placeholder="定義 AI 助手的角色、語氣、回答語言..."></textarea>
                             </div>
-                        </div>
-                        <div class="form-group">
-                            <div class="json-actions">
-                                <button class="btn-small" id="btn-download-system-instruction">Download .json</button>
-                                <label class="btn-small btn-upload">
-                                    Upload .json (System Instruction)
-                                    <input type="file" id="upload-system-instruction" accept=".json" hidden>
-                                </label>
+                            <div class="form-group">
+                                <label>Function Usage Rules — 功能使用規則</label>
+                                <textarea id="setting-static-knowledge" rows="5" placeholder="功能呼叫規則、ID 使用方式等..."></textarea>
                             </div>
-                        </div>
+                            <div class="form-group">
+                                <label>Knowledge Base — 背景知識文檔</label>
+                                <textarea id="setting-knowledge-base" rows="8" class="json-editor" placeholder="上傳 JSON 文檔或手動輸入背景知識..." spellcheck="false"></textarea>
+                                <div class="json-actions">
+                                    <label class="btn-small btn-upload">
+                                        Upload (.json / .txt / .md)
+                                        <input type="file" id="upload-knowledge-base" accept=".json,.txt,.md" multiple hidden>
+                                    </label>
+                                    <button class="btn-small btn-reset" id="btn-clear-knowledge-base">Clear</button>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <div class="json-actions">
+                                    <button class="btn-small" id="btn-download-system-instruction">Download .json</button>
+                                    <label class="btn-small btn-upload">
+                                        Upload .json (System Instruction)
+                                        <input type="file" id="upload-system-instruction" accept=".json" hidden>
+                                    </label>
+                                </div>
+                            </div>
 
-                        <h3 class="settings-section-title">Robot Background Info</h3>
-                        <div class="form-group">
-                            <label>Pre-injected location/shelf data (appended to system instruction at connect time)</label>
-                            <textarea id="setting-robot-info" rows="6" placeholder="Click buttons below to fetch data from robot..."></textarea>
-                            <div class="json-actions">
-                                <button class="btn-small" id="btn-fetch-locations">Fetch Locations</button>
-                                <button class="btn-small" id="btn-fetch-shelves">Fetch Shelves</button>
+                            <h3 class="settings-section-title">Robot Background Info</h3>
+                            <div class="form-group">
+                                <label>Pre-injected location/shelf data (appended to system instruction at connect time)</label>
+                                <textarea id="setting-robot-info" rows="6" placeholder="Click buttons below to fetch data from robot..."></textarea>
+                                <div class="json-actions">
+                                    <button class="btn-small" id="btn-fetch-locations">Fetch Locations</button>
+                                    <button class="btn-small" id="btn-fetch-shelves">Fetch Shelves</button>
+                                </div>
                             </div>
-                        </div>
 
-                        <h3 class="settings-section-title">Function Declarations</h3>
-                        <div class="form-group">
-                            <label>Editable function declarations (JSON array)</label>
-                            <textarea id="setting-function-declarations" rows="16" class="json-editor" placeholder="[...]" spellcheck="false"></textarea>
-                            <div id="func-decl-error" class="json-error" style="display: none;"></div>
-                            <div class="json-actions">
-                                <button class="btn-small" id="btn-download-func-decl">Download .json</button>
-                                <label class="btn-small btn-upload">
-                                    Upload .json
-                                    <input type="file" id="upload-func-decl" accept=".json" hidden>
-                                </label>
-                                <button class="btn-small btn-reset" id="btn-reset-func-decl">Reset to Default</button>
+                            <h3 class="settings-section-title">Function Declarations</h3>
+                            <div class="form-group">
+                                <label>Editable function declarations (JSON array)</label>
+                                <textarea id="setting-function-declarations" rows="16" class="json-editor" placeholder="[...]" spellcheck="false"></textarea>
+                                <div id="func-decl-error" class="json-error" style="display: none;"></div>
+                                <div class="json-actions">
+                                    <button class="btn-small" id="btn-download-func-decl">Download .json</button>
+                                    <label class="btn-small btn-upload">
+                                        Upload .json
+                                        <input type="file" id="upload-func-decl" accept=".json" hidden>
+                                    </label>
+                                    <button class="btn-small btn-reset" id="btn-reset-func-decl">Reset to Default</button>
+                                </div>
                             </div>
-                        </div>
 
-                        <h3 class="settings-section-title">Interim Response</h3>
-                        <div class="form-group" style="flex-direction: row; align-items: center; gap: 12px;">
-                            <input type="checkbox" id="setting-enable-interim" style="width: auto;">
-                            <label for="setting-enable-interim" style="margin: 0; cursor: pointer;">Enable Interim Response during Function Calls</label>
-                        </div>
-                        <div class="form-group">
-                            <label>Interim Phrases (function name &rarr; spoken text)</label>
-                            <textarea id="setting-interim-phrases" rows="10" class="json-editor" spellcheck="false"></textarea>
-                            <div id="interim-phrases-error" class="json-error" style="display: none;"></div>
-                        </div>
-                        <div class="form-group">
-                            <div class="json-actions">
-                                <button class="btn-small btn-generate" id="btn-generate-interim">Generate Audio with Live API</button>
-                                <span id="interim-generate-status" class="interim-status"></span>
+                            <h3 class="settings-section-title">Token Usage</h3>
+                            <div class="token-stats">
+                                <div class="token-stat-row">
+                                    <span class="token-label">Today</span>
+                                    <span class="token-values">
+                                        Prompt: <span id="token-today-prompt">0</span> &bull;
+                                        Response: <span id="token-today-response">0</span> &bull;
+                                        Total: <span id="token-today-total">0</span>
+                                    </span>
+                                </div>
+                                <div class="token-stat-row">
+                                    <span class="token-label">All Time</span>
+                                    <span class="token-values">
+                                        Prompt: <span id="token-all-prompt">0</span> &bull;
+                                        Response: <span id="token-all-response">0</span> &bull;
+                                        Total: <span id="token-all-total">0</span>
+                                    </span>
+                                </div>
+                                <div class="json-actions">
+                                    <button class="btn-small" id="btn-refresh-tokens">Refresh</button>
+                                    <button class="btn-small btn-reset" id="btn-reset-tokens">Reset</button>
+                                </div>
                             </div>
-                            <div id="interim-audio-status" class="interim-audio-list"></div>
                         </div>
+                    </div>
 
-                        <h3 class="settings-section-title">Token Usage</h3>
-                        <div class="token-stats">
-                            <div class="token-stat-row">
-                                <span class="token-label">Today</span>
-                                <span class="token-values">
-                                    Prompt: <span id="token-today-prompt">0</span> &bull;
-                                    Response: <span id="token-today-response">0</span> &bull;
-                                    Total: <span id="token-today-total">0</span>
-                                </span>
-                            </div>
-                            <div class="token-stat-row">
-                                <span class="token-label">All Time</span>
-                                <span class="token-values">
-                                    Prompt: <span id="token-all-prompt">0</span> &bull;
-                                    Response: <span id="token-all-response">0</span> &bull;
-                                    Total: <span id="token-all-total">0</span>
-                                </span>
-                            </div>
-                            <div class="json-actions">
-                                <button class="btn-small" id="btn-refresh-tokens">Refresh</button>
-                                <button class="btn-small btn-reset" id="btn-reset-tokens">Reset</button>
-                            </div>
-                        </div>
+                    <!-- ═══ TEXT API TAB ═══ -->
+                    <div class="settings-pane" id="settings-pane-text-api" style="display: none;">
+                        <div class="settings-column">
+                            <h3 class="settings-section-title">Text API Configuration</h3>
 
-                        <h3 class="settings-section-title">Robot Configuration</h3>
+                            <div class="form-group">
+                                <label>Text Model</label>
+                                <div class="model-select-row">
+                                    <select id="setting-text-model">
+                                        <option value="gemini-3-flash-preview">gemini-3-flash-preview</option>
+                                        <option value="gemini-2.5-flash-preview-05-20">gemini-2.5-flash-preview-05-20</option>
+                                        <option value="gemini-2.0-flash">gemini-2.0-flash</option>
+                                    </select>
+                                    <button class="btn-small btn-query-models" id="btn-query-text-models">Query</button>
+                                </div>
+                            </div>
+                            <div class="form-group" style="flex-direction: row; align-items: center; gap: 12px;">
+                                <input type="checkbox" id="setting-text-google-search" style="width: auto;">
+                                <label for="setting-text-google-search" style="margin: 0; cursor: pointer;">Enable Google Search (Grounding)</label>
+                            </div>
+                        </div>
+                    </div>
 
-                        <div class="form-group">
-                            <label>Shelf IDs (comma separated)</label>
-                            <input type="text" id="setting-shelf-ids" placeholder="shelf_1, shelf_2">
-                        </div>
-                        <div class="form-group" style="flex-direction: row; align-items: center; gap: 12px;">
-                            <input type="checkbox" id="setting-camera-to-ai" style="width: auto;">
-                            <label for="setting-camera-to-ai" style="margin: 0; cursor: pointer;">Send Camera Frames to AI</label>
-                        </div>
-                        <div class="form-group">
-                            <label>Robot IP (from environment)</label>
-                            <span id="setting-robot-ip" class="setting-display-value">N/A</span>
+                    <!-- ═══ LIVE API TAB ═══ -->
+                    <div class="settings-pane" id="settings-pane-live-api" style="display: none;">
+                        <div class="settings-column">
+                            <h3 class="settings-section-title">Live API Configuration</h3>
+
+                            <div class="form-group">
+                                <label>Live Model</label>
+                                <div class="model-select-row">
+                                    <select id="setting-live-model">
+                                        <option value="gemini-2.5-flash-native-audio-latest">gemini-2.5-flash-native-audio-latest</option>
+                                        <option value="gemini-2.0-flash-live-001">gemini-2.0-flash-live-001</option>
+                                    </select>
+                                    <button class="btn-small btn-query-models" id="btn-query-live-models">Query</button>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>Response Mode</label>
+                                <select id="setting-response-mode">
+                                    <option value="audio">Voice (Audio)</option>
+                                    <option value="text">Text Only</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Voice</label>
+                                <select id="setting-voice">
+                                    <option value="Puck">Puck</option>
+                                    <option value="Charon">Charon</option>
+                                    <option value="Kore">Kore</option>
+                                    <option value="Fenrir">Fenrir</option>
+                                    <option value="Aoede" selected>Aoede</option>
+                                </select>
+                            </div>
+                            <div class="form-group" style="flex-direction: row; align-items: center; gap: 12px;">
+                                <input type="checkbox" id="setting-live-google-search" style="width: auto;">
+                                <label for="setting-live-google-search" style="margin: 0; cursor: pointer;">Enable Google Search (Grounding)</label>
+                            </div>
+                            <div class="form-group" style="flex-direction: row; align-items: center; gap: 12px;">
+                                <input type="checkbox" id="setting-camera-to-ai" style="width: auto;">
+                                <label for="setting-camera-to-ai" style="margin: 0; cursor: pointer;">Send Camera Frames to AI</label>
+                            </div>
+
+                            <h3 class="settings-section-title">Interim Response</h3>
+                            <div class="form-group" style="flex-direction: row; align-items: center; gap: 12px;">
+                                <input type="checkbox" id="setting-enable-interim" style="width: auto;">
+                                <label for="setting-enable-interim" style="margin: 0; cursor: pointer;">Enable Interim Response during Function Calls</label>
+                            </div>
+                            <div class="form-group">
+                                <label>Interim Phrases (function name &rarr; spoken text)</label>
+                                <textarea id="setting-interim-phrases" rows="10" class="json-editor" spellcheck="false"></textarea>
+                                <div id="interim-phrases-error" class="json-error" style="display: none;"></div>
+                            </div>
+                            <div class="form-group">
+                                <div class="json-actions">
+                                    <button class="btn-small btn-generate" id="btn-generate-interim">Generate Audio with Live API</button>
+                                    <span id="interim-generate-status" class="interim-status"></span>
+                                </div>
+                                <div id="interim-audio-status" class="interim-audio-list"></div>
+                            </div>
                         </div>
                     </div>
 

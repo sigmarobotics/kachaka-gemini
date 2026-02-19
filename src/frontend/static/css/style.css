@@ -730,6 +730,60 @@ select option {
     margin: -4px 0 8px 0;
 }
 
+/* ═══ SETTINGS SUB-TABS ═══ */
+
+.settings-tabs {
+    display: flex;
+    gap: 0;
+    background: var(--void);
+    padding: 4px;
+    border: 1px solid var(--border-subtle);
+    margin-bottom: 16px;
+}
+
+.settings-tab-btn {
+    font-family: var(--font-display);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    padding: 8px 16px;
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    position: relative;
+    transition: all 0.15s ease;
+    flex: 1;
+    text-align: center;
+}
+
+.settings-tab-btn:hover {
+    color: var(--text-secondary);
+    background: var(--amber-subtle);
+}
+
+.settings-tab-btn.active {
+    color: var(--amber);
+    background: var(--amber-subtle);
+}
+
+.settings-tab-btn.active::after {
+    content: '';
+    position: absolute;
+    bottom: 2px;
+    left: 20%;
+    right: 20%;
+    height: 2px;
+    background: var(--amber);
+    box-shadow: var(--amber-glow-soft);
+}
+
+.settings-pane {
+    width: 100%;
+    animation: fadeIn 0.2s ease-out;
+}
+
 .form-group {
     display: flex;
     flex-direction: column;
