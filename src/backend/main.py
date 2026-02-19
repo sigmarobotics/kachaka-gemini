@@ -388,10 +388,10 @@ async def ws_chat(websocket: WebSocket):
             elif msg_type == "clear_history":
                 if session and hasattr(session, 'clear_history'):
                     session.clear_history()
-                    await websocket.send_json({
-                        "type": "history_cleared",
-                        "message": "Chat history cleared",
-                    })
+                await websocket.send_json({
+                    "type": "history_cleared",
+                    "message": "Chat history cleared",
+                })
 
     except WebSocketDisconnect:
         pass

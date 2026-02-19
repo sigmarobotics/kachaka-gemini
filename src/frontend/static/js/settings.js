@@ -272,7 +272,7 @@ export function initSettings() {
         ?.addEventListener('click', () => {
             const container = document.getElementById('func-editor');
             if (!container) return;
-            const index = container.querySelectorAll('.func-card').length;
+            const index = ++window._funcCardCounter;
             const newCard = renderFuncCard({ name: '', description: '', parameters: { type: 'object', properties: {}, required: [] } }, index);
             container.insertAdjacentHTML('beforeend', newCard);
             container.lastElementChild?.classList.add('open');
@@ -360,6 +360,7 @@ function renderFuncEditor(declarations) {
     const container = document.getElementById('func-editor');
     if (!container) return;
     container.innerHTML = declarations.map((fn, i) => renderFuncCard(fn, i)).join('');
+    window._funcCardCounter = declarations.length - 1;
 }
 
 function renderFuncCard(fn, index) {
