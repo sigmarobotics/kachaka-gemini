@@ -24,6 +24,7 @@ class GeminiTextSession:
         self._model = ""
         self._config = None
         self._history = []  # list of types.Content
+        self._enable_google_search = False
 
     async def connect(self):
         settings = settings_service.get_all()
@@ -60,12 +61,13 @@ class GeminiTextSession:
         print(f"[TextAPI] System instruction ({len(system_prompt)} chars):\n{system_prompt[:500]}")
 
         func_decls = settings.get("function_declarations", DEFAULT_FUNCTION_DECLARATIONS)
-        enable_google_search = settings.get("text_enable_google_search", False)
+        self._enable_google_search = settings.get("text_enable_google_search", False)
 
-        tool_kwargs = {"function_declarations": func_decls}
-        if enable_google_search:
-            tool_kwargs["google_search"] = types.GoogleSearch()
-        tool_list = [types.Tool(**tool_kwargs)]
+        # Google Search + function calling can't coexist in the same request
+        # for some models (e.g. gemini-3-flash-preview returns 400).
+        # Instead, we only send function declarations here and handle
+        # google_search calls via a separate API call in _handle_google_search().
+        tool_list = [types.Tool(function_declarations=func_decls)]
 
         # Generation parameters
         temperature = _clamp(settings.get("text_temperature", 1.0), 0.0, 2.0, 1.0)
@@ -228,7 +230,11 @@ class GeminiTextSession:
                         "args": fn_args,
                     })
 
-                    result = execute_function_call(fn_name, fn_args)
+                    if fn_name == "google_search":
+                        # Handle via separate API call with Google Search grounding
+                        result = await self._handle_google_search(fn_args)
+                    else:
+                        result = execute_function_call(fn_name, fn_args)
 
                     await self._send_to_client({
                         "type": "function_result",
@@ -276,6 +282,47 @@ class GeminiTextSession:
             else:
                 await self._send_to_client({"type": "turn_complete"})
                 return
+
+    async def _handle_google_search(self, args: dict) -> dict:
+        """Handle google_search function call via a separate API call with Google Search grounding.
+
+        Some models (e.g. gemini-3-flash-preview) don't support Google Search
+        and function calling in the same request. The model still emits a
+        google_search function call based on the system instruction, so we
+        intercept it and perform the search in a dedicated API call.
+        """
+        if not self._enable_google_search:
+            return {"error": "Google Search is not enabled in settings."}
+
+        queries = args.get("queries", [])
+        search_query = " ".join(queries) if isinstance(queries, list) else str(queries)
+        if not search_query:
+            return {"error": "No search queries provided"}
+
+        try:
+            search_config = types.GenerateContentConfig(
+                tools=[types.Tool(google_search=types.GoogleSearch())],
+            )
+            response = await asyncio.to_thread(
+                self._client.models.generate_content,
+                model=self._model,
+                contents=search_query,
+                config=search_config,
+            )
+
+            search_text = response.text or ""
+
+            # Forward grounding metadata (sources) to the frontend
+            if response.candidates:
+                grounding = getattr(response.candidates[0], "grounding_metadata", None)
+                if grounding:
+                    await self._send_google_search_info(grounding)
+
+            return {"result": search_text}
+        except Exception as e:
+            print(f"[TextAPI] Google Search error: {e}")
+            traceback.print_exc()
+            return {"error": f"Google Search failed: {e}"}
 
     async def _send_google_search_info(self, grounding):
         """Send Google Search grounding metadata to the frontend."""
