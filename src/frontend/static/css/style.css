@@ -693,6 +693,62 @@ select option {
     color: var(--text-primary);
 }
 
+/* ═══ RANGE SLIDER ═══ */
+
+input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 6px;
+    background: var(--panel-dark);
+    border: 1px solid var(--border-subtle);
+    outline: none;
+    cursor: pointer;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    background: var(--amber);
+    border: 1px solid var(--amber-dim);
+    cursor: pointer;
+}
+
+input[type="range"]::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    background: var(--amber);
+    border: 1px solid var(--amber-dim);
+    cursor: pointer;
+    border-radius: 0;
+}
+
+input[type="number"] {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    padding: 10px 12px;
+    background: var(--void);
+    border: 1px solid var(--border-subtle);
+    color: var(--text-bright);
+    transition: all 0.15s ease;
+    width: 100%;
+}
+
+input[type="number"]:focus {
+    outline: none;
+    border-color: var(--amber-dim);
+    box-shadow: 0 0 0 2px var(--amber-subtle);
+}
+
+.param-value {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--amber);
+    margin-left: 8px;
+}
+
 /* ═══ SETTINGS ═══ */
 
 .settings-container {

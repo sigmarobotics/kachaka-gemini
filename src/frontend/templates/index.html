@@ -231,6 +231,66 @@
                                 <input type="checkbox" id="setting-text-google-search" style="width: auto;">
                                 <label for="setting-text-google-search" style="margin: 0; cursor: pointer;">Enable Google Search (Grounding)</label>
                             </div>
+
+                            <h3 class="settings-section-title">Generation Parameters</h3>
+                            <div class="form-group">
+                                <label>Temperature <span class="param-value" id="text-temp-display">1.0</span></label>
+                                <input type="range" id="setting-text-temperature" min="0" max="2" step="0.1" value="1.0">
+                            </div>
+                            <div class="form-group">
+                                <label>Max Output Tokens</label>
+                                <input type="number" id="setting-text-max-output-tokens" min="1" max="65536" value="8192">
+                            </div>
+                            <div class="form-group">
+                                <label>Top-P <span class="param-value" id="text-top-p-display">0.95</span></label>
+                                <input type="range" id="setting-text-top-p" min="0" max="1" step="0.05" value="0.95">
+                            </div>
+                            <div class="form-group">
+                                <label>Top-K</label>
+                                <input type="number" id="setting-text-top-k" min="1" max="100" value="40">
+                            </div>
+
+                            <h3 class="settings-section-title">Safety Settings</h3>
+                            <div class="form-group">
+                                <label>Harassment</label>
+                                <select id="setting-text-safety-harassment">
+                                    <option value="">Default</option>
+                                    <option value="BLOCK_NONE">Block None</option>
+                                    <option value="BLOCK_LOW_AND_ABOVE">Block Low+</option>
+                                    <option value="BLOCK_MEDIUM_AND_ABOVE">Block Medium+</option>
+                                    <option value="BLOCK_ONLY_HIGH">Block High Only</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Hate Speech</label>
+                                <select id="setting-text-safety-hate">
+                                    <option value="">Default</option>
+                                    <option value="BLOCK_NONE">Block None</option>
+                                    <option value="BLOCK_LOW_AND_ABOVE">Block Low+</option>
+                                    <option value="BLOCK_MEDIUM_AND_ABOVE">Block Medium+</option>
+                                    <option value="BLOCK_ONLY_HIGH">Block High Only</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Sexually Explicit</label>
+                                <select id="setting-text-safety-sexual">
+                                    <option value="">Default</option>
+                                    <option value="BLOCK_NONE">Block None</option>
+                                    <option value="BLOCK_LOW_AND_ABOVE">Block Low+</option>
+                                    <option value="BLOCK_MEDIUM_AND_ABOVE">Block Medium+</option>
+                                    <option value="BLOCK_ONLY_HIGH">Block High Only</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Dangerous Content</label>
+                                <select id="setting-text-safety-danger">
+                                    <option value="">Default</option>
+                                    <option value="BLOCK_NONE">Block None</option>
+                                    <option value="BLOCK_LOW_AND_ABOVE">Block Low+</option>
+                                    <option value="BLOCK_MEDIUM_AND_ABOVE">Block Medium+</option>
+                                    <option value="BLOCK_ONLY_HIGH">Block High Only</option>
+                                </select>
+                            </div>
                         </div>
                     </div>
 
@@ -273,6 +333,24 @@
                             <div class="form-group" style="flex-direction: row; align-items: center; gap: 12px;">
                                 <input type="checkbox" id="setting-camera-to-ai" style="width: auto;">
                                 <label for="setting-camera-to-ai" style="margin: 0; cursor: pointer;">Send Camera Frames to AI</label>
+                            </div>
+
+                            <h3 class="settings-section-title">Generation Parameters</h3>
+                            <div class="form-group">
+                                <label>Temperature <span class="param-value" id="live-temp-display">1.0</span></label>
+                                <input type="range" id="setting-live-temperature" min="0" max="2" step="0.1" value="1.0">
+                            </div>
+                            <div class="form-group">
+                                <label>Max Output Tokens</label>
+                                <input type="number" id="setting-live-max-output-tokens" min="1" max="65536" value="8192">
+                            </div>
+                            <div class="form-group">
+                                <label>Top-P <span class="param-value" id="live-top-p-display">0.95</span></label>
+                                <input type="range" id="setting-live-top-p" min="0" max="1" step="0.05" value="0.95">
+                            </div>
+                            <div class="form-group">
+                                <label>Top-K</label>
+                                <input type="number" id="setting-live-top-k" min="1" max="100" value="40">
                             </div>
 
                             <h3 class="settings-section-title">Interim Response</h3>

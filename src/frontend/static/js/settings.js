@@ -11,6 +11,37 @@ function switchSettingsTab(tabName) {
     });
 }
 
+function updateParamDisplay(inputId, displayId) {
+    const input = document.getElementById(inputId);
+    const display = document.getElementById(displayId);
+    if (input && display) display.textContent = input.value;
+}
+
+const SAFETY_CATEGORIES = {
+    'harassment': 'HARM_CATEGORY_HARASSMENT',
+    'hate': 'HARM_CATEGORY_HATE_SPEECH',
+    'sexual': 'HARM_CATEGORY_SEXUALLY_EXPLICIT',
+    'danger': 'HARM_CATEGORY_DANGEROUS_CONTENT',
+};
+
+function loadSafetySettings(safetyObj) {
+    for (const [shortKey, fullKey] of Object.entries(SAFETY_CATEGORIES)) {
+        const select = document.getElementById(`setting-text-safety-${shortKey}`);
+        if (select) select.value = safetyObj[fullKey] || '';
+    }
+}
+
+function collectSafetySettings() {
+    const result = {};
+    for (const [shortKey, fullKey] of Object.entries(SAFETY_CATEGORIES)) {
+        const select = document.getElementById(`setting-text-safety-${shortKey}`);
+        if (select && select.value) {
+            result[fullKey] = select.value;
+        }
+    }
+    return result;
+}
+
 export async function loadSettings() {
     try {
         const res = await fetch('/api/settings');
@@ -92,6 +123,29 @@ export async function loadSettings() {
 
         // Update interim audio status display
         updateInterimAudioStatus(settings.interim_audio_keys || []);
+
+        // Generation parameters — Text
+        const textTemp = document.getElementById('setting-text-temperature');
+        const textMaxTokens = document.getElementById('setting-text-max-output-tokens');
+        const textTopP = document.getElementById('setting-text-top-p');
+        const textTopK = document.getElementById('setting-text-top-k');
+        if (textTemp) { textTemp.value = settings.text_temperature ?? 1.0; updateParamDisplay('setting-text-temperature', 'text-temp-display'); }
+        if (textMaxTokens) textMaxTokens.value = settings.text_max_output_tokens ?? 8192;
+        if (textTopP) { textTopP.value = settings.text_top_p ?? 0.95; updateParamDisplay('setting-text-top-p', 'text-top-p-display'); }
+        if (textTopK) textTopK.value = settings.text_top_k ?? 40;
+
+        // Generation parameters — Live
+        const liveTemp = document.getElementById('setting-live-temperature');
+        const liveMaxTokens = document.getElementById('setting-live-max-output-tokens');
+        const liveTopP = document.getElementById('setting-live-top-p');
+        const liveTopK = document.getElementById('setting-live-top-k');
+        if (liveTemp) { liveTemp.value = settings.live_temperature ?? 1.0; updateParamDisplay('setting-live-temperature', 'live-temp-display'); }
+        if (liveMaxTokens) liveMaxTokens.value = settings.live_max_output_tokens ?? 8192;
+        if (liveTopP) { liveTopP.value = settings.live_top_p ?? 0.95; updateParamDisplay('setting-live-top-p', 'live-top-p-display'); }
+        if (liveTopK) liveTopK.value = settings.live_top_k ?? 40;
+
+        // Safety settings — Text only
+        loadSafetySettings(settings.text_safety_settings || {});
 
         // Load token usage
         await loadTokenUsage();
@@ -233,6 +287,17 @@ export function initSettings() {
     document.getElementById('btn-reset-tokens')
         ?.addEventListener('click', resetTokenUsage);
 
+    // Slider display updates
+    for (const [sliderId, displayId] of [
+        ['setting-text-temperature', 'text-temp-display'],
+        ['setting-text-top-p', 'text-top-p-display'],
+        ['setting-live-temperature', 'live-temp-display'],
+        ['setting-live-top-p', 'live-top-p-display'],
+    ]) {
+        document.getElementById(sliderId)
+            ?.addEventListener('input', () => updateParamDisplay(sliderId, displayId));
+    }
+
     loadSettings();
 }
 
@@ -356,6 +421,29 @@ async function saveSettings() {
             return;
         }
     }
+
+    // Generation params — Text
+    const textTemp = document.getElementById('setting-text-temperature');
+    const textMaxTokens = document.getElementById('setting-text-max-output-tokens');
+    const textTopP = document.getElementById('setting-text-top-p');
+    const textTopK = document.getElementById('setting-text-top-k');
+    if (textTemp) updates.text_temperature = parseFloat(textTemp.value);
+    if (textMaxTokens) updates.text_max_output_tokens = parseInt(textMaxTokens.value, 10);
+    if (textTopP) updates.text_top_p = parseFloat(textTopP.value);
+    if (textTopK) updates.text_top_k = parseInt(textTopK.value, 10);
+
+    // Generation params — Live
+    const liveTemp = document.getElementById('setting-live-temperature');
+    const liveMaxTokens = document.getElementById('setting-live-max-output-tokens');
+    const liveTopP = document.getElementById('setting-live-top-p');
+    const liveTopK = document.getElementById('setting-live-top-k');
+    if (liveTemp) updates.live_temperature = parseFloat(liveTemp.value);
+    if (liveMaxTokens) updates.live_max_output_tokens = parseInt(liveMaxTokens.value, 10);
+    if (liveTopP) updates.live_top_p = parseFloat(liveTopP.value);
+    if (liveTopK) updates.live_top_k = parseInt(liveTopK.value, 10);
+
+    // Safety settings — Text
+    updates.text_safety_settings = collectSafetySettings();
 
     try {
         const res = await fetch('/api/settings', {
