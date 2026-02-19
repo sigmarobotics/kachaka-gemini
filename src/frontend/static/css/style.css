@@ -840,6 +840,72 @@ input[type="number"]:focus {
     animation: fadeIn 0.2s ease-out;
 }
 
+/* ═══ ACCORDION ═══ */
+
+.accordion {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    border: 1px solid var(--border-subtle);
+}
+
+.accordion-item {
+    background: var(--void);
+}
+
+.accordion-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 14px;
+    background: var(--panel-mid);
+    cursor: pointer;
+    transition: background 0.15s ease;
+    user-select: none;
+}
+
+.accordion-header:hover {
+    background: var(--panel-hover);
+}
+
+.accordion-title {
+    font-family: var(--font-display);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+}
+
+.accordion-item.open .accordion-title {
+    color: var(--amber);
+}
+
+.accordion-arrow {
+    font-size: 10px;
+    color: var(--text-muted);
+    transition: transform 0.2s ease;
+}
+
+.accordion-item.open .accordion-arrow {
+    transform: rotate(180deg);
+    color: var(--amber);
+}
+
+.accordion-body {
+    display: none;
+    padding: 12px 14px;
+    border-top: 1px solid var(--border-subtle);
+}
+
+.accordion-item.open .accordion-body {
+    display: block;
+}
+
+.accordion-body textarea {
+    width: 100%;
+}
+
 .form-group {
     display: flex;
     flex-direction: column;
