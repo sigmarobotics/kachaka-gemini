@@ -8,7 +8,7 @@ import websockets
 from robot_service import robot_service
 import settings_service
 import token_service
-from config import DEFAULT_FUNCTION_DECLARATIONS
+from config import DEFAULT_FUNCTION_DECLARATIONS, _clamp
 
 GEMINI_WS_URL = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent"
 
@@ -121,10 +121,10 @@ class GeminiLiveSession:
         self._response_mode = settings.get("response_mode", "audio")
         enable_google_search = settings.get("live_enable_google_search", False)
 
-        live_temperature = settings.get("live_temperature", 1.0)
-        live_max_output_tokens = settings.get("live_max_output_tokens", 8192)
-        live_top_p = settings.get("live_top_p", 0.95)
-        live_top_k = settings.get("live_top_k", 40)
+        live_temperature = _clamp(settings.get("live_temperature", 1.0), 0.0, 2.0, 1.0)
+        live_max_output_tokens = _clamp(settings.get("live_max_output_tokens", 8192), 1, 65536, 8192, int)
+        live_top_p = _clamp(settings.get("live_top_p", 0.95), 0.0, 1.0, 0.95)
+        live_top_k = _clamp(settings.get("live_top_k", 40), 1, 100, 40, int)
 
         url = f"{GEMINI_WS_URL}?key={api_key}"
 
@@ -134,18 +134,18 @@ class GeminiLiveSession:
             )
 
             # Build generation config based on response mode
+            gen_params = {
+                "temperature": live_temperature,
+                "maxOutputTokens": live_max_output_tokens,
+                "topP": live_top_p,
+                "topK": live_top_k,
+            }
+
             if self._response_mode == "text":
-                # Native-audio models only support AUDIO — fall back for text mode
                 if "native-audio" in model:
                     model = "gemini-2.0-flash-live-001"
                     print(f"Text mode: switched model to {model}")
-                generation_config = {
-                    "responseModalities": ["TEXT"],
-                    "temperature": live_temperature,
-                    "maxOutputTokens": live_max_output_tokens,
-                    "topP": live_top_p,
-                    "topK": live_top_k,
-                }
+                generation_config = {"responseModalities": ["TEXT"], **gen_params}
             else:
                 generation_config = {
                     "responseModalities": ["AUDIO"],
@@ -154,10 +154,7 @@ class GeminiLiveSession:
                             "prebuiltVoiceConfig": {"voiceName": voice_name}
                         }
                     },
-                    "temperature": live_temperature,
-                    "maxOutputTokens": live_max_output_tokens,
-                    "topP": live_top_p,
-                    "topK": live_top_k,
+                    **gen_params,
                 }
 
             # Build tools list

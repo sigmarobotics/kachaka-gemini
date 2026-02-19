@@ -9,7 +9,7 @@ from google.genai import types
 from robot_service import robot_service
 import settings_service
 import token_service
-from config import DEFAULT_FUNCTION_DECLARATIONS
+from config import DEFAULT_FUNCTION_DECLARATIONS, _clamp
 from gemini_live_service import execute_function_call
 
 
@@ -68,19 +68,28 @@ class GeminiTextSession:
         tool_list = [types.Tool(**tool_kwargs)]
 
         # Generation parameters
-        temperature = settings.get("text_temperature", 1.0)
-        max_output_tokens = settings.get("text_max_output_tokens", 8192)
-        top_p = settings.get("text_top_p", 0.95)
-        top_k = settings.get("text_top_k", 40)
+        temperature = _clamp(settings.get("text_temperature", 1.0), 0.0, 2.0, 1.0)
+        max_output_tokens = _clamp(settings.get("text_max_output_tokens", 8192), 1, 65536, 8192, int)
+        top_p = _clamp(settings.get("text_top_p", 0.95), 0.0, 1.0, 0.95)
+        top_k = _clamp(settings.get("text_top_k", 40), 1, 100, 40, int)
         raw_safety = settings.get("text_safety_settings", {})
 
         # Build safety settings list
-        safety_settings = None
-        if raw_safety:
-            safety_settings = [
-                types.SafetySetting(category=cat, threshold=thresh)
-                for cat, thresh in raw_safety.items()
-            ]
+        VALID_SAFETY_CATEGORIES = {
+            "HARM_CATEGORY_HARASSMENT", "HARM_CATEGORY_HATE_SPEECH",
+            "HARM_CATEGORY_SEXUALLY_EXPLICIT", "HARM_CATEGORY_DANGEROUS_CONTENT",
+        }
+        VALID_THRESHOLDS = {
+            "BLOCK_NONE", "BLOCK_LOW_AND_ABOVE",
+            "BLOCK_MEDIUM_AND_ABOVE", "BLOCK_ONLY_HIGH",
+        }
+        safety_settings = []
+        for cat, thresh in raw_safety.items():
+            if cat in VALID_SAFETY_CATEGORIES and thresh in VALID_THRESHOLDS:
+                safety_settings.append(types.SafetySetting(category=cat, threshold=thresh))
+            else:
+                print(f"[TextAPI] Ignoring invalid safety setting: {cat}={thresh}")
+        safety_settings = safety_settings or None
 
         self._config = types.GenerateContentConfig(
             system_instruction=system_prompt if system_prompt else None,

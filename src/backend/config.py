@@ -2,6 +2,15 @@ import os
 
 ROBOT_IP = os.environ.get("ROBOT_IP", "192.168.50.133:26400")
 
+
+def _clamp(value, lo, hi, default, cast=float):
+    """Clamp a settings value to [lo, hi] with type coercion."""
+    try:
+        v = cast(value)
+        return max(lo, min(hi, v))
+    except (TypeError, ValueError):
+        return default
+
 # Data dir - support both local dev and Docker
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 if os.path.exists(os.path.join(BASE_DIR, "data")):
@@ -265,7 +274,7 @@ DEFAULT_SETTINGS = {
     "live_max_output_tokens": 8192,
     "live_top_p": 0.95,
     "live_top_k": 40,
-    "live_safety_settings": {},
+    "live_safety_settings": {},  # Reserved; BidiGenerateContent does not support safety settings
     "persona": DEFAULT_PERSONA,
     "static_knowledge": DEFAULT_STATIC_KNOWLEDGE,
     "knowledge_base": DEFAULT_KNOWLEDGE_BASE,
