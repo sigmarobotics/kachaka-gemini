@@ -107,7 +107,6 @@ class GeminiTextSession:
         await self._send_to_client({
             "type": "status",
             "message": "Connected to Gemini Text API",
-            "response_mode": "text",
             "api_mode": "text",
         })
 

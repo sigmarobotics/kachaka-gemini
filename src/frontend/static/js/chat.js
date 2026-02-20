@@ -6,9 +6,10 @@ let isConnected = false;
 let isMicActive = false;
 let audioContext = null;
 let mediaStream = null;
-let scriptProcessor = null;
+let workletNode = null;
+let workletBuffer = [];
+let workletBufferLength = 0;
 let currentModelText = '';
-let currentResponseMode = 'audio';
 let currentApiMode = 'live';
 let sessionTokenTotal = 0;
 
@@ -75,9 +76,6 @@ async function connect() {
             if (msg.type === 'status' && msg.message && msg.message.includes('Connected to Gemini')) {
                 if (msg.api_mode) {
                     currentApiMode = msg.api_mode;
-                }
-                if (msg.response_mode) {
-                    currentResponseMode = msg.response_mode;
                 }
                 sessionTokenTotal = 0;
                 updateSessionTokenDisplay();
@@ -173,8 +171,8 @@ function updateConnectionUI(connected) {
         if (statusDot) statusDot.classList.remove('connected');
     }
 
-    // In text API mode or text response mode, hide the mic button
-    const isTextMode = currentResponseMode === 'text' || currentApiMode === 'text';
+    // In text API mode, hide the mic button
+    const isTextMode = currentApiMode === 'text';
     micBtn.disabled = !connected || isTextMode;
     micBtn.style.display = isTextMode ? 'none' : '';
     sendBtn.disabled = !connected;
@@ -221,19 +219,52 @@ async function startMic() {
 
         const source = audioContext.createMediaStreamSource(mediaStream);
 
-        // Use ScriptProcessorNode for PCM capture
-        // Buffer size 4096 gives ~256ms at 16kHz
-        scriptProcessor = audioContext.createScriptProcessor(4096, 1, 1);
-        scriptProcessor.onaudioprocess = (e) => {
-            if (!isMicActive || !ws || ws.readyState !== WebSocket.OPEN) return;
-            const float32 = e.inputBuffer.getChannelData(0);
-            const pcm16 = float32ToPcm16(float32);
-            const b64 = arrayBufferToBase64(pcm16.buffer);
-            ws.send(JSON.stringify({ type: 'audio', data: b64 }));
-        };
+        if (audioContext.audioWorklet) {
+            // AudioWorklet: modern, non-deprecated approach
+            await audioContext.audioWorklet.addModule('/static/js/pcm-processor.js');
+            workletNode = new AudioWorkletNode(audioContext, 'pcm-processor');
+            workletBuffer = [];
+            workletBufferLength = 0;
 
-        source.connect(scriptProcessor);
-        scriptProcessor.connect(audioContext.destination);
+            workletNode.port.onmessage = (e) => {
+                if (!isMicActive || !ws || ws.readyState !== WebSocket.OPEN) return;
+                const float32Chunk = e.data; // 128 samples per AudioWorklet render quantum
+                workletBuffer.push(float32Chunk);
+                workletBufferLength += float32Chunk.length;
+
+                // Buffer ~4096 samples (~256ms at 16kHz) before sending
+                if (workletBufferLength >= 4096) {
+                    const merged = new Float32Array(workletBufferLength);
+                    let offset = 0;
+                    for (const chunk of workletBuffer) {
+                        merged.set(chunk, offset);
+                        offset += chunk.length;
+                    }
+                    workletBuffer = [];
+                    workletBufferLength = 0;
+
+                    const pcm16 = float32ToPcm16(merged);
+                    const b64 = arrayBufferToBase64(pcm16.buffer);
+                    ws.send(JSON.stringify({ type: 'audio', data: b64 }));
+                }
+            };
+
+            source.connect(workletNode);
+            workletNode.connect(audioContext.destination);
+        } else {
+            // Fallback: ScriptProcessorNode for older browsers
+            workletNode = audioContext.createScriptProcessor(4096, 1, 1);
+            workletNode.onaudioprocess = (e) => {
+                if (!isMicActive || !ws || ws.readyState !== WebSocket.OPEN) return;
+                const float32 = e.inputBuffer.getChannelData(0);
+                const pcm16 = float32ToPcm16(float32);
+                const b64 = arrayBufferToBase64(pcm16.buffer);
+                ws.send(JSON.stringify({ type: 'audio', data: b64 }));
+            };
+
+            source.connect(workletNode);
+            workletNode.connect(audioContext.destination);
+        }
 
         isMicActive = true;
         updateMicUI(true);
@@ -247,10 +278,12 @@ function stopMic() {
     isMicActive = false;
     updateMicUI(false);
 
-    if (scriptProcessor) {
-        scriptProcessor.disconnect();
-        scriptProcessor = null;
+    if (workletNode) {
+        workletNode.disconnect();
+        workletNode = null;
     }
+    workletBuffer = [];
+    workletBufferLength = 0;
     if (mediaStream) {
         mediaStream.getTracks().forEach((t) => t.stop());
         mediaStream = null;

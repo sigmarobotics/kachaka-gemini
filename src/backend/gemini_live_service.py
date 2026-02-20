@@ -75,7 +75,6 @@ class GeminiLiveSession:
         self._camera_task = None
         self._closed = False
         self._session_id = uuid.uuid4().hex[:12]
-        self._response_mode = "audio"
 
     async def connect(self):
         settings = settings_service.get_all()
@@ -87,7 +86,7 @@ class GeminiLiveSession:
             })
             return False
 
-        model = settings.get("live_model", "gemini-2.0-flash-live-001")
+        model = settings.get("live_model", "gemini-2.5-flash-native-audio-preview-12-2025")
 
         # Build system instruction from sections
         sections = []
@@ -118,7 +117,6 @@ class GeminiLiveSession:
 
         voice_name = settings.get("voice_name", "Aoede")
         func_decls = settings.get("function_declarations", DEFAULT_FUNCTION_DECLARATIONS)
-        self._response_mode = settings.get("response_mode", "audio")
         enable_google_search = settings.get("live_enable_google_search", False)
 
         live_temperature = _clamp(settings.get("live_temperature", 1.0), 0.0, 2.0, 1.0)
@@ -141,21 +139,15 @@ class GeminiLiveSession:
                 "topK": live_top_k,
             }
 
-            if self._response_mode == "text":
-                if "native-audio" in model:
-                    model = "gemini-2.0-flash-live-001"
-                    print(f"Text mode: switched model to {model}")
-                generation_config = {"responseModalities": ["TEXT"], **gen_params}
-            else:
-                generation_config = {
-                    "responseModalities": ["AUDIO"],
-                    "speechConfig": {
-                        "voiceConfig": {
-                            "prebuiltVoiceConfig": {"voiceName": voice_name}
-                        }
-                    },
-                    **gen_params,
-                }
+            generation_config = {
+                "responseModalities": ["AUDIO"],
+                "speechConfig": {
+                    "voiceConfig": {
+                        "prebuiltVoiceConfig": {"voiceName": voice_name}
+                    }
+                },
+                **gen_params,
+            }
 
             # Build tools list
             tools = [{"functionDeclarations": func_decls}]
@@ -198,7 +190,6 @@ class GeminiLiveSession:
         await self._send_to_client({
             "type": "status",
             "message": "Connected to Gemini Live API",
-            "response_mode": self._response_mode,
         })
 
         # Start receiving from Gemini
@@ -405,6 +396,28 @@ class GeminiLiveSession:
             await self.client_ws.send_json(msg)
         except Exception:
             pass
+
+    async def clear_history(self):
+        """Clear conversation history by reconnecting with a fresh Gemini session.
+
+        The Live API maintains history server-side; the only way to clear it
+        is to close the current connection and start a new one.
+        """
+        if self._receive_task:
+            self._receive_task.cancel()
+            self._receive_task = None
+        if self._camera_task:
+            self._camera_task.cancel()
+            self._camera_task = None
+        if self.gemini_ws:
+            try:
+                await self.gemini_ws.close()
+            except Exception:
+                pass
+            self.gemini_ws = None
+
+        self._closed = False
+        await self.connect()
 
     async def close(self):
         self._closed = True

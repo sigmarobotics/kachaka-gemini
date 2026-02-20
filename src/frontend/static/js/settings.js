@@ -51,7 +51,6 @@ export async function loadSettings() {
         const apiModeSelect = document.getElementById('setting-api-mode');
         const textModelInput = document.getElementById('setting-text-model');
         const liveModelInput = document.getElementById('setting-live-model');
-        const responseModeSelect = document.getElementById('setting-response-mode');
         const personaInput = document.getElementById('setting-persona');
         const staticKnowledgeInput = document.getElementById('setting-static-knowledge');
         const voiceSelect = document.getElementById('setting-voice');
@@ -87,7 +86,6 @@ export async function loadSettings() {
             liveModelInput.value = savedLiveModel;
         }
 
-        if (responseModeSelect) responseModeSelect.value = settings.response_mode || 'audio';
         if (personaInput) personaInput.value = settings.persona || '';
         if (staticKnowledgeInput) staticKnowledgeInput.value = settings.static_knowledge || '';
 
@@ -501,7 +499,6 @@ async function saveSettings() {
     const apiModeSelect = document.getElementById('setting-api-mode');
     const textModelInput = document.getElementById('setting-text-model');
     const liveModelInput = document.getElementById('setting-live-model');
-    const responseModeSelect = document.getElementById('setting-response-mode');
     const personaInput = document.getElementById('setting-persona');
     const staticKnowledgeInput = document.getElementById('setting-static-knowledge');
     const voiceSelect = document.getElementById('setting-voice');
@@ -526,7 +523,6 @@ async function saveSettings() {
     if (apiModeSelect) updates.api_mode = apiModeSelect.value;
     if (textModelInput) updates.text_model = textModelInput.value.trim();
     if (liveModelInput) updates.live_model = liveModelInput.value.trim();
-    if (responseModeSelect) updates.response_mode = responseModeSelect.value;
     if (personaInput) updates.persona = personaInput.value;
     if (staticKnowledgeInput) updates.static_knowledge = staticKnowledgeInput.value;
     const knowledgeBaseInput = document.getElementById('setting-knowledge-base');

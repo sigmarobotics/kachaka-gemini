@@ -61,16 +61,19 @@ async def get_map():
 async def camera_front():
     """MJPEG streaming endpoint for the front camera."""
     async def generate():
-        while True:
-            img = robot_service.get_front_camera_image()
-            if img and hasattr(img, "data") and img.data:
-                yield (
-                    b"--frame\r\n"
-                    b"Content-Type: image/jpeg\r\n\r\n"
-                    + img.data
-                    + b"\r\n"
-                )
-            await asyncio.sleep(0.1)
+        try:
+            while True:
+                img = robot_service.get_front_camera_image()
+                if img and hasattr(img, "data") and img.data:
+                    yield (
+                        b"--frame\r\n"
+                        b"Content-Type: image/jpeg\r\n\r\n"
+                        + img.data
+                        + b"\r\n"
+                    )
+                await asyncio.sleep(0.1)
+        except asyncio.CancelledError:
+            pass
 
     return StreamingResponse(
         generate(),
@@ -387,7 +390,7 @@ async def ws_chat(websocket: WebSocket):
 
             elif msg_type == "clear_history":
                 if session and hasattr(session, 'clear_history'):
-                    session.clear_history()
+                    await session.clear_history()
                 await websocket.send_json({
                     "type": "history_cleared",
                     "message": "Chat history cleared",

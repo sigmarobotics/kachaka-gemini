@@ -260,8 +260,7 @@ DEFAULT_SETTINGS = {
     "gemini_api_key": "",
     "api_mode": "text",
     "text_model": "gemini-3-flash-preview",
-    "live_model": "gemini-2.0-flash-live-001",
-    "response_mode": "text",
+    "live_model": "gemini-2.5-flash-native-audio-preview-12-2025",
     "text_enable_google_search": True,
     "live_enable_google_search": False,
     # Generation parameters (per-mode)
