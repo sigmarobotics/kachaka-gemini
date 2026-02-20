@@ -217,9 +217,10 @@ class GeminiLiveSession:
             return
         msg = {
             "realtimeInput": {
-                "mediaChunks": [
-                    {"mimeType": "audio/pcm;rate=16000", "data": audio_b64}
-                ]
+                "audio": {
+                    "mimeType": "audio/pcm;rate=16000",
+                    "data": audio_b64,
+                }
             }
         }
         await self.gemini_ws.send(json.dumps(msg))
@@ -234,12 +235,10 @@ class GeminiLiveSession:
                         b64_data = base64.b64encode(img.data).decode("utf-8")
                         msg = {
                             "realtimeInput": {
-                                "mediaChunks": [
-                                    {
-                                        "mimeType": "image/jpeg",
-                                        "data": b64_data,
-                                    }
-                                ]
+                                "video": {
+                                    "mimeType": "image/jpeg",
+                                    "data": b64_data,
+                                }
                             }
                         }
                         await self.gemini_ws.send(json.dumps(msg))
