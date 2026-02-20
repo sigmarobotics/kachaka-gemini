@@ -338,7 +338,7 @@ async def ws_chat(websocket: WebSocket):
                         await session.close()
                     api_mode = settings_service.get("api_mode", "live")
                     if api_mode == "text":
-                        session = GeminiTextSession(websocket)
+                        session = GeminiTextSession(websocket.send_json)
                     else:
                         session = GeminiLiveSession(websocket)
                     ok = await session.connect()
