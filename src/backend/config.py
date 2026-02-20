@@ -258,6 +258,7 @@ DEFAULT_KNOWLEDGE_BASE = _json.dumps({
 
 DEFAULT_SETTINGS = {
     "gemini_api_key": "",
+    "telegram_bot_token": "",
     "api_mode": "text",
     "text_model": "gemini-3-flash-preview",
     "live_model": "gemini-2.5-flash-native-audio-preview-12-2025",

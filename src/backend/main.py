@@ -101,6 +101,13 @@ async def get_settings(request: Request):
         safe["gemini_api_key_masked"] = key[:4] + "..." + key[-4:] if len(key) > 8 else "****"
     else:
         safe["gemini_api_key_masked"] = ""
+    # Mask Telegram bot token for display
+    if safe.get("telegram_bot_token"):
+        key = safe["telegram_bot_token"]
+        safe["telegram_bot_token_masked"] = key[:4] + "..." + key[-4:] if len(key) > 8 else "****"
+    else:
+        safe["telegram_bot_token_masked"] = ""
+    safe.pop("telegram_bot_token", None)
     # Replace interim_audio with just key list (audio data is large)
     if safe.get("interim_audio"):
         safe["interim_audio_keys"] = list(safe["interim_audio"].keys())

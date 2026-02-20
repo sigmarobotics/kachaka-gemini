@@ -63,6 +63,8 @@ export async function loadSettings() {
         const interimPhrasesInput = document.getElementById('setting-interim-phrases');
 
         if (apiKeyInput) apiKeyInput.placeholder = settings.gemini_api_key_masked || 'Enter Gemini API Key';
+        const telegramTokenInput = document.getElementById('setting-telegram-token');
+        if (telegramTokenInput) telegramTokenInput.placeholder = settings.telegram_bot_token_masked || 'Enter Telegram Bot Token';
         if (apiModeSelect) apiModeSelect.value = settings.api_mode || 'live';
 
         if (textModelInput) {
@@ -520,6 +522,10 @@ async function saveSettings() {
     if (apiKeyInput && apiKeyInput.value.trim()) {
         updates.gemini_api_key = apiKeyInput.value.trim();
     }
+    const telegramTokenInput = document.getElementById('setting-telegram-token');
+    if (telegramTokenInput && telegramTokenInput.value.trim()) {
+        updates.telegram_bot_token = telegramTokenInput.value.trim();
+    }
     if (apiModeSelect) updates.api_mode = apiModeSelect.value;
     if (textModelInput) updates.text_model = textModelInput.value.trim();
     if (liveModelInput) updates.live_model = liveModelInput.value.trim();
@@ -594,6 +600,7 @@ async function saveSettings() {
                 saveBtn.style.background = '';
             }, 2000);
             if (apiKeyInput) apiKeyInput.value = '';
+            if (telegramTokenInput) telegramTokenInput.value = '';
             await loadSettings();
         }
     } catch (e) {
