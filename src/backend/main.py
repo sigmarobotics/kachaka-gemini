@@ -19,6 +19,7 @@ import token_service
 from config import DEFAULT_SETTINGS
 from gemini_live_service import GeminiLiveSession, GEMINI_WS_URL
 from gemini_text_service import GeminiTextSession
+from telegram_service import telegram_manager
 
 # Paths - support both local dev and Docker
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -33,6 +34,21 @@ TEMPLATE_DIR = os.path.join(FRONTEND_DIR, "templates")
 app = FastAPI(title="Kachaka + Gemini Live")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 templates = Jinja2Templates(directory=TEMPLATE_DIR)
+
+
+@app.on_event("startup")
+async def startup_event():
+    token = settings_service.get("telegram_bot_token", "")
+    if token:
+        try:
+            await telegram_manager.start(token)
+        except Exception as e:
+            print(f"[Telegram] Failed to start bot: {e}")
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    await telegram_manager.stop()
 
 
 # ─── Pages ────────────────────────────────────────────────────────────────────
@@ -137,7 +153,17 @@ async def get_default_settings():
 @app.post("/api/settings")
 async def save_settings(request: Request):
     body = await request.json()
+    old_token = settings_service.get("telegram_bot_token", "")
     updated = settings_service.save(body)
+    new_token = updated.get("telegram_bot_token", "")
+    # Hot-reload Telegram bot on token change
+    if new_token != old_token:
+        await telegram_manager.stop()
+        if new_token:
+            try:
+                await telegram_manager.start(new_token)
+            except Exception as e:
+                print(f"[Telegram] Failed to start bot: {e}")
     return {"status": "ok", "settings": updated}
 
 
