@@ -16,8 +16,8 @@ from gemini_live_service import execute_function_call
 class GeminiTextSession:
     """Manages a Gemini Text API session using google-genai SDK."""
 
-    def __init__(self, client_ws):
-        self.client_ws = client_ws
+    def __init__(self, send_callback):
+        self.send_callback = send_callback
         self._closed = False
         self._session_id = uuid.uuid4().hex[:12]
         self._client = None
@@ -343,9 +343,22 @@ class GeminiTextSession:
         if self._closed:
             return
         try:
-            await self.client_ws.send_json(msg)
+            await self.send_callback(msg)
         except Exception:
             pass
+
+    async def send_text_and_collect(self, text: str) -> list:
+        """Send text and return all response messages as a list."""
+        collected = []
+        async def collector(msg):
+            collected.append(msg)
+        original_cb = self.send_callback
+        self.send_callback = collector
+        try:
+            await self.send_text(text)
+        finally:
+            self.send_callback = original_cb
+        return collected
 
     def clear_history(self):
         """Clear the conversation history."""
