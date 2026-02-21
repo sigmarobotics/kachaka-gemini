@@ -2368,4 +2368,145 @@ input[type="number"]:focus {
     .camera-panel {
         max-height: 28vh;
     }
+
+/* ═══ FILE MANAGEMENT ═══ */
+
+.file-upload-area {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 1rem;
+    border: 1px dashed var(--glass-border);
+    border-radius: 8px;
+    background: var(--glass-bg);
+}
+
+.file-upload-name {
+    flex: 1;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.file-upload-progress {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-top: 0.5rem;
+}
+
+.progress-bar {
+    flex: 1;
+    height: 6px;
+    background: var(--glass-border);
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.progress-fill {
+    height: 100%;
+    background: var(--mint);
+    border-radius: 3px;
+    width: 0%;
+    transition: width 0.3s ease;
+}
+
+#file-upload-status {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+
+.file-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.file-list-empty {
+    text-align: center;
+    color: var(--text-muted);
+    padding: 2rem 1rem;
+    font-size: 0.9rem;
+}
+
+.file-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+    border: 1px solid var(--glass-border);
+    border-radius: 8px;
+    background: var(--glass-bg);
+}
+
+.file-item.expired {
+    border-color: #f59e0b;
+    opacity: 0.8;
+}
+
+.file-item-checkbox {
+    flex-shrink: 0;
+}
+
+.file-item-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.file-item-name {
+    font-size: 0.9rem;
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.file-item-meta {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-top: 2px;
+}
+
+.file-item-expired {
+    color: #f59e0b;
+    font-weight: 600;
+}
+
+.file-item-actions {
+    display: flex;
+    gap: 0.5rem;
+    flex-shrink: 0;
+}
+
+.file-item-actions button {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.75rem;
+    border-radius: 4px;
+    cursor: pointer;
+    border: 1px solid var(--glass-border);
+    background: transparent;
+    color: var(--text-secondary);
+}
+
+.file-item-actions button:hover {
+    background: var(--glass-border);
+}
+
+.file-item-actions .btn-delete:hover {
+    background: #ef4444;
+    color: white;
+    border-color: #ef4444;
+}
+
+.file-item-actions .btn-reupload {
+    color: var(--mint);
+    border-color: var(--mint);
+}
+
+.file-item-actions .btn-reupload:hover {
+    background: var(--mint);
+    color: var(--bg);
 }
