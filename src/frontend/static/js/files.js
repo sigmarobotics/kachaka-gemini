@@ -135,10 +135,17 @@ async function loadFileList() {
     }
 }
 
+function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+
 function renderFileItem(f) {
     const expired = f.expired;
     const expiryText = formatExpiry(f.expires_at);
     const sizeText = formatSize(f.size_bytes);
+    const safeName = escapeHtml(f.filename);
 
     return `
     <div class="file-item${expired ? ' expired' : ''}">
@@ -147,7 +154,7 @@ function renderFileItem(f) {
                ${f.enabled && !expired ? 'checked' : ''}
                ${expired ? 'disabled' : ''}>
         <div class="file-item-info">
-            <div class="file-item-name" title="${f.filename}">${f.filename}</div>
+            <div class="file-item-name" title="${safeName}">${safeName}</div>
             <div class="file-item-meta">
                 ${sizeText}
                 &middot;

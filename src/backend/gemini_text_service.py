@@ -377,7 +377,7 @@ class GeminiTextSession:
             self.send_callback = original_cb
         return collected
 
-    def clear_history(self):
+    async def clear_history(self):
         """Clear the conversation history."""
         self._history = []
         self._files_injected = False

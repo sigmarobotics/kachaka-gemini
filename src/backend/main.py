@@ -284,9 +284,16 @@ def list_models(mode: str = "live"):
 
 # ─── File Management endpoints ────────────────────────────────────────────────
 
+_FILE_SAFE_FIELDS = {"id", "filename", "mime_type", "size_bytes", "uploaded_at", "expires_at", "enabled", "expired"}
+
+
+def _safe_record(r: dict) -> dict:
+    return {k: v for k, v in r.items() if k in _FILE_SAFE_FIELDS}
+
+
 @app.get("/api/files")
 async def list_files():
-    return file_service.list_files()
+    return [_safe_record(r) for r in file_service.list_files()]
 
 
 @app.post("/api/files/upload")
@@ -308,7 +315,7 @@ async def upload_file(file: UploadFile = File(...)):
             mime_type=file.content_type or "application/octet-stream",
             api_key=api_key,
         )
-        return record
+        return _safe_record(record)
     except Exception as e:
         print(f"[Files] Upload error: {e}")
         import traceback
@@ -343,7 +350,7 @@ async def reupload_file(file_id: str):
     record = await file_service.reupload_file(file_id, api_key)
     if not record:
         return JSONResponse({"error": "File not found or local copy missing"}, status_code=404)
-    return record
+    return _safe_record(record)
 
 
 @app.post("/api/generate_interim_audio")
