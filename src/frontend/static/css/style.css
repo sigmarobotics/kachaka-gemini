@@ -2376,9 +2376,9 @@ input[type="number"]:focus {
     align-items: center;
     gap: 0.75rem;
     padding: 1rem;
-    border: 1px dashed var(--glass-border);
+    border: 1px dashed var(--border-subtle);
     border-radius: 8px;
-    background: var(--glass-bg);
+    background: var(--panel-light);
 }
 
 .file-upload-name {
@@ -2400,7 +2400,7 @@ input[type="number"]:focus {
 .progress-bar {
     flex: 1;
     height: 6px;
-    background: var(--glass-border);
+    background: var(--border-subtle);
     border-radius: 3px;
     overflow: hidden;
 }
@@ -2437,9 +2437,9 @@ input[type="number"]:focus {
     align-items: center;
     gap: 0.75rem;
     padding: 0.75rem 1rem;
-    border: 1px solid var(--glass-border);
+    border: 1px solid var(--border-subtle);
     border-radius: 8px;
-    background: var(--glass-bg);
+    background: var(--panel-light);
 }
 
 .file-item.expired {
@@ -2486,13 +2486,13 @@ input[type="number"]:focus {
     font-size: 0.75rem;
     border-radius: 4px;
     cursor: pointer;
-    border: 1px solid var(--glass-border);
+    border: 1px solid var(--border-subtle);
     background: transparent;
     color: var(--text-secondary);
 }
 
 .file-item-actions button:hover {
-    background: var(--glass-border);
+    background: var(--border-subtle);
 }
 
 .file-item-actions .btn-delete:hover {
@@ -2508,5 +2508,5 @@ input[type="number"]:focus {
 
 .file-item-actions .btn-reupload:hover {
     background: var(--mint);
-    color: var(--bg);
+    color: var(--void);
 }
