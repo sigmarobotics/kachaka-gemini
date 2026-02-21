@@ -260,5 +260,9 @@ def get_enabled_files() -> list[dict]:
             name = r.get("gemini_name", "")
             uri = r.get("gemini_uri", "")
             if name and uri:
-                result.append({"name": name, "uri": uri})
+                result.append({
+                    "name": name,
+                    "uri": uri,
+                    "mime_type": r.get("mime_type", "application/octet-stream"),
+                })
     return result

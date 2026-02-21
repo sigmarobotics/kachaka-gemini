@@ -127,9 +127,10 @@ class GeminiTextSession:
             for ef in enabled_files:
                 parts.append(types.Part.from_uri(
                     file_uri=ef["uri"],
-                    mime_type=None,
+                    mime_type=ef.get("mime_type", "application/octet-stream"),
                 ))
             if enabled_files:
+                print(f"[TextAPI] Injected {len(enabled_files)} file(s)")
                 self._files_injected = True
 
         parts.append(types.Part.from_text(text=text))
@@ -147,6 +148,7 @@ class GeminiTextSession:
     async def _generate(self):
         """Call generateContent in a loop to handle function calling."""
         while True:
+            await self._send_to_client({"type": "thinking"})
             try:
                 response = await asyncio.to_thread(
                     self._client.models.generate_content,

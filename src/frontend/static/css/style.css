@@ -1371,6 +1371,23 @@ input[type="number"]:focus {
     animation: pulse-border 1s ease-in-out infinite;
 }
 
+.chat-message.thinking-indicator {
+    border-left-color: var(--teal-bright);
+    animation: pulse-border 1.5s ease-in-out infinite;
+}
+
+.thinking-dots::after {
+    content: '';
+    animation: thinking-dots 1.5s steps(3, end) infinite;
+}
+
+@keyframes thinking-dots {
+    0%   { content: ''; }
+    33%  { content: '.'; }
+    66%  { content: '..'; }
+    100% { content: '...'; }
+}
+
 @keyframes pulse-border {
     0%, 100% { border-left-color: var(--teal); }
     50% { border-left-color: var(--teal-bright); }
