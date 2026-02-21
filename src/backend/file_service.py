@@ -7,6 +7,8 @@ and providing enabled file references for injection into conversations.
 import asyncio
 import json
 import os
+import re
+import threading
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -17,6 +19,8 @@ from config import DATA_DIR
 UPLOADS_DIR = os.path.join(DATA_DIR, "uploads")
 META_FILE = os.path.join(DATA_DIR, "files.json")
 EXPIRY_HOURS = 48
+
+_meta_lock = threading.Lock()
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -42,10 +46,12 @@ def _load_meta() -> list[dict]:
 
 
 def _save_meta(records: list[dict]):
-    """Persist the file metadata list to disk."""
+    """Persist the file metadata list to disk atomically."""
     _ensure_dirs()
-    with open(META_FILE, "w", encoding="utf-8") as f:
+    tmp_path = META_FILE + ".tmp"
+    with open(tmp_path, "w", encoding="utf-8") as f:
         json.dump(records, f, ensure_ascii=False, indent=2)
+    os.replace(tmp_path, META_FILE)
 
 
 def _is_expired(record: dict) -> bool:
@@ -81,8 +87,9 @@ async def upload_file(
     _ensure_dirs()
 
     file_id = _make_id()
-    # Sanitise filename for local storage: prefix with id to avoid collisions
-    safe_name = f"{file_id}_{filename}"
+    # Sanitise filename for local storage: strip path components and unsafe chars
+    base_name = os.path.basename(filename)
+    safe_name = f"{file_id}_{re.sub(r'[^a-zA-Z0-9._-]', '_', base_name)}"
     local_path = os.path.join(UPLOADS_DIR, safe_name)
 
     # Write bytes to local storage
@@ -115,9 +122,10 @@ async def upload_file(
         "enabled": True,
     }
 
-    records = _load_meta()
-    records.append(record)
-    _save_meta(records)
+    with _meta_lock:
+        records = _load_meta()
+        records.append(record)
+        _save_meta(records)
 
     print(f"[FileService] Uploaded {filename} -> {gemini_file.name}")
     return record
@@ -164,8 +172,10 @@ async def delete_file(file_id: str, api_key: str = "") -> bool:
             print(f"[FileService] Local delete failed for {local_path}: {exc}")
 
     # Remove from metadata
-    records = [r for r in records if r["id"] != file_id]
-    _save_meta(records)
+    with _meta_lock:
+        records = _load_meta()
+        records = [r for r in records if r["id"] != file_id]
+        _save_meta(records)
 
     print(f"[FileService] Deleted file {file_id}")
     return True
@@ -176,16 +186,18 @@ def toggle_file(file_id: str, enabled: bool) -> bool:
 
     Returns True if the record was found and updated.
     """
-    records = _load_meta()
-    found = False
-    for r in records:
-        if r["id"] == file_id:
-            r["enabled"] = enabled
-            found = True
-            break
+    with _meta_lock:
+        records = _load_meta()
+        found = False
+        for r in records:
+            if r["id"] == file_id:
+                r["enabled"] = enabled
+                found = True
+                break
+        if found:
+            _save_meta(records)
 
     if found:
-        _save_meta(records)
         print(f"[FileService] Toggled file {file_id} enabled={enabled}")
     return found
 
@@ -223,8 +235,13 @@ async def reupload_file(file_id: str, api_key: str) -> dict | None:
     target["uploaded_at"] = now.isoformat()
     target["expires_at"] = (now + timedelta(hours=EXPIRY_HOURS)).isoformat()
 
-    records[idx] = target
-    _save_meta(records)
+    with _meta_lock:
+        records = _load_meta()
+        for i, r in enumerate(records):
+            if r["id"] == file_id:
+                records[i] = target
+                break
+        _save_meta(records)
 
     print(f"[FileService] Re-uploaded {file_id} -> {gemini_file.name}")
     return target
@@ -240,8 +257,8 @@ def get_enabled_files() -> list[dict]:
     result = []
     for r in records:
         if r.get("enabled") and not _is_expired(r):
-            result.append({
-                "name": r.get("gemini_name", ""),
-                "uri": r.get("gemini_uri", ""),
-            })
+            name = r.get("gemini_name", "")
+            uri = r.get("gemini_uri", "")
+            if name and uri:
+                result.append({"name": name, "uri": uri})
     return result
