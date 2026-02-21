@@ -5,6 +5,7 @@ venv/
 data/settings.json
 data/*.json
 data/*.db
+data/uploads/
 .env
 *.log
 .DS_Store
