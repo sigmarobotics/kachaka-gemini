@@ -11,6 +11,7 @@ import base64
 from robot_manager import robot_manager
 import settings_service
 import token_service
+import file_service
 from config import DEFAULT_FUNCTION_DECLARATIONS, _clamp
 
 
@@ -26,6 +27,7 @@ class GeminiTextSession:
         self._config = None
         self._history = []  # list of types.Content
         self._enable_google_search = False
+        self._files_injected = False
 
     async def connect(self):
         settings = settings_service.get_all()
@@ -117,9 +119,23 @@ class GeminiTextSession:
         if self._closed:
             return
 
-        # Append user message
+        parts = []
+
+        # Inject enabled files on the first message (or after history clear)
+        if not self._files_injected:
+            enabled_files = file_service.get_enabled_files()
+            for ef in enabled_files:
+                parts.append(types.Part.from_uri(
+                    file_uri=ef["uri"],
+                    mime_type=None,
+                ))
+            if enabled_files:
+                self._files_injected = True
+
+        parts.append(types.Part.from_text(text=text))
+
         self._history.append(
-            types.Content(role="user", parts=[types.Part.from_text(text=text)])
+            types.Content(role="user", parts=parts)
         )
 
         await self._generate()
@@ -364,6 +380,7 @@ class GeminiTextSession:
     def clear_history(self):
         """Clear the conversation history."""
         self._history = []
+        self._files_injected = False
 
     async def close(self):
         self._closed = True
