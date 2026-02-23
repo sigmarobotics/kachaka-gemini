@@ -12,7 +12,7 @@ from telegram.ext import (
 )
 
 from gemini_text_service import GeminiTextSession
-from robot_service import robot_service
+from robot_manager import robot_manager
 
 logger = logging.getLogger(__name__)
 
@@ -160,14 +160,15 @@ class TelegramBotManager:
 
                 # If capture_camera, send the photo
                 if fn_name == "capture_camera":
-                    img = robot_service.get_front_camera_image()
-                    if img and hasattr(img, "data") and img.data:
-                        # Flush any accumulated text first
+                    frame = robot_manager.get_camera_frame()
+                    if frame and frame.get("ok") and frame.get("image_base64"):
+                        import base64
+                        jpeg_bytes = base64.b64decode(frame["image_base64"])
                         if text_parts:
                             await update.message.reply_text("\n".join(text_parts))
                             text_parts.clear()
                             sent_something = True
-                        await update.message.reply_photo(photo=img.data)
+                        await update.message.reply_photo(photo=jpeg_bytes)
                         sent_something = True
 
             elif msg_type == "function_result":
