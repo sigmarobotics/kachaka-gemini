@@ -1,5 +1,6 @@
 import os
 
+# Fallback robot IP from env var. Primary source is settings.json "robot_ip" field.
 ROBOT_IP = os.environ.get("ROBOT_IP", "192.168.50.133:26400")
 
 
