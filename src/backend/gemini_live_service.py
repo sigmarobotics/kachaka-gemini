@@ -5,64 +5,12 @@ import traceback
 import uuid
 from datetime import datetime, timezone, timedelta
 import websockets
-from robot_service import robot_service
+from robot_manager import robot_manager
 import settings_service
 import token_service
 from config import DEFAULT_FUNCTION_DECLARATIONS, _clamp
 
 GEMINI_WS_URL = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent"
-
-
-def execute_function_call(name: str, args: dict) -> dict:
-    """Execute a function call from Gemini and return the result."""
-    try:
-        if name == "move_to_location":
-            location_id = args.get("location_id", "")
-            if not location_id:
-                return {"success": False, "error": "location_id is required"}
-            result = robot_service.move_to_location(location_id)
-            return result
-
-        elif name == "move_shelf":
-            shelf_id = args.get("shelf_id", "")
-            destination_id = args.get("destination_id", "")
-            if not shelf_id or not destination_id:
-                return {"success": False, "error": "shelf_id and destination_id are required"}
-            result = robot_service.move_shelf(shelf_id, destination_id)
-            return result
-
-        elif name == "return_shelf":
-            shelf_id = args.get("shelf_id", "")
-            if not shelf_id:
-                return {"success": False, "error": "shelf_id is required"}
-            result = robot_service.return_shelf(shelf_id)
-            return result
-
-        elif name == "get_robot_status":
-            state = robot_service.get_state()
-            cmd_state = robot_service.get_command_state()
-            return {
-                "battery": state["battery"],
-                "pose": state["pose"],
-                "command_state": cmd_state.get("state", "unknown"),
-            }
-
-        elif name == "cancel_command":
-            robot_service.cancel_command()
-            return {"success": True, "message": "Command cancelled"}
-
-        elif name == "capture_camera":
-            img = robot_service.get_front_camera_image()
-            if img and hasattr(img, "data") and img.data:
-                return {"success": True, "message": "Camera frame captured, image attached"}
-            else:
-                return {"success": False, "error": "Camera not available"}
-
-        else:
-            return {"error": f"Unknown function: {name}"}
-
-    except Exception as e:
-        return {"error": str(e)}
 
 
 class GeminiLiveSession:
@@ -226,18 +174,17 @@ class GeminiLiveSession:
         await self.gemini_ws.send(json.dumps(msg))
 
     async def _stream_camera(self):
-        """Periodically send camera frames to Gemini."""
+        """Periodically send camera frames to Gemini from CameraStreamer."""
         try:
             while not self._closed and self.gemini_ws:
                 try:
-                    img = robot_service.get_front_camera_image()
-                    if img and hasattr(img, "data") and img.data:
-                        b64_data = base64.b64encode(img.data).decode("utf-8")
+                    frame = robot_manager.get_camera_frame()
+                    if frame and frame.get("ok") and frame.get("image_base64"):
                         msg = {
                             "realtimeInput": {
                                 "video": {
                                     "mimeType": "image/jpeg",
-                                    "data": b64_data,
+                                    "data": frame["image_base64"],
                                 }
                             }
                         }
@@ -321,8 +268,9 @@ class GeminiLiveSession:
                     "args": fn_args,
                 })
 
-                # Execute function
-                result = execute_function_call(fn_name, fn_args)
+                # Movement commands are blocking (RobotController waits for completion),
+                # so run in thread pool to avoid blocking the event loop
+                result = await asyncio.to_thread(robot_manager.execute_function_call, fn_name, fn_args)
 
                 # Notify client about result
                 await self._send_to_client({
@@ -347,15 +295,14 @@ class GeminiLiveSession:
                     await self.gemini_ws.send(json.dumps(tool_response))
 
                     # For capture_camera, also send the image as realtime input
-                    if fn_name == "capture_camera" and result.get("success"):
-                        img = robot_service.get_front_camera_image()
-                        if img and hasattr(img, "data") and img.data:
-                            b64_data = base64.b64encode(img.data).decode("utf-8")
+                    if fn_name == "capture_camera" and result.get("ok"):
+                        frame = robot_manager.get_camera_frame()
+                        if frame and frame.get("ok") and frame.get("image_base64"):
                             img_msg = {
                                 "realtimeInput": {
                                     "mediaChunks": [{
                                         "mimeType": "image/jpeg",
-                                        "data": b64_data,
+                                        "data": frame["image_base64"],
                                     }]
                                 }
                             }
