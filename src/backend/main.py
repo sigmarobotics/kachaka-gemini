@@ -13,7 +13,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
 import websockets
 
-from robot_service import robot_service
+from robot_manager import robot_manager
 import settings_service
 import token_service
 from config import DEFAULT_SETTINGS
@@ -38,6 +38,9 @@ templates = Jinja2Templates(directory=TEMPLATE_DIR)
 
 @app.on_event("startup")
 async def startup_event():
+    # Auto-connect to robot from saved settings
+    robot_manager.auto_connect()
+    # Start Telegram bot
     token = settings_service.get("telegram_bot_token", "")
     if token:
         try:
@@ -49,6 +52,7 @@ async def startup_event():
 @app.on_event("shutdown")
 async def shutdown_event():
     await telegram_manager.stop()
+    robot_manager.disconnect()
 
 
 # ─── Pages ────────────────────────────────────────────────────────────────────
@@ -62,12 +66,12 @@ async def index(request: Request):
 
 @app.get("/api/state")
 async def get_state():
-    return robot_service.get_state()
+    return robot_manager.get_state()
 
 
 @app.get("/api/map")
 async def get_map():
-    data = robot_service.get_map_bytes()
+    data = robot_manager.get_map_bytes()
     if data:
         return Response(content=data, media_type="image/png")
     return Response(status_code=404)
@@ -79,12 +83,12 @@ async def camera_front():
     async def generate():
         try:
             while True:
-                img = robot_service.get_front_camera_image()
-                if img and hasattr(img, "data") and img.data:
+                jpeg_bytes = robot_manager.get_camera_jpeg_bytes()
+                if jpeg_bytes:
                     yield (
                         b"--frame\r\n"
                         b"Content-Type: image/jpeg\r\n\r\n"
-                        + img.data
+                        + jpeg_bytes
                         + b"\r\n"
                     )
                 await asyncio.sleep(0.1)
@@ -99,12 +103,12 @@ async def camera_front():
 
 @app.get("/api/locations")
 async def get_locations():
-    return robot_service.get_locations()
+    return robot_manager.get_locations()
 
 
 @app.get("/api/shelves")
 async def get_shelves():
-    return robot_service.get_shelves()
+    return robot_manager.get_shelves()
 
 
 @app.get("/api/settings")
@@ -322,19 +326,19 @@ async def move_robot(request: Request):
     x = body.get("x", 0)
     y = body.get("y", 0)
     theta = body.get("theta", 0)
-    robot_service.move_to(x, y, theta, wait=False)
+    robot_manager.move_to_pose(x, y, theta)
     return {"status": "ok"}
 
 
 @app.post("/api/cancel_command")
 async def cancel_command():
-    robot_service.cancel_command()
+    robot_manager.cancel_command()
     return {"status": "ok"}
 
 
 @app.post("/api/return_home")
 async def return_home():
-    robot_service.return_home()
+    robot_manager.return_home()
     return {"status": "ok"}
 
 
@@ -343,14 +347,37 @@ async def manual_control(request: Request):
     body = await request.json()
     direction = body.get("direction", "")
     if direction == "forward":
-        robot_service.move_forward(0.1)
+        robot_manager.move_forward(0.1)
     elif direction == "backward":
-        robot_service.move_forward(-0.1)
+        robot_manager.move_forward(-0.1)
     elif direction == "left":
-        robot_service.rotate(math.radians(10))
+        robot_manager.rotate(math.radians(10))
     elif direction == "right":
-        robot_service.rotate(math.radians(-10))
+        robot_manager.rotate(math.radians(-10))
     return {"status": "ok"}
+
+
+# ─── Robot connection management ─────────────────────────────────────────────
+
+@app.post("/api/robot/connect")
+async def robot_connect(request: Request):
+    body = await request.json()
+    ip = body.get("ip", "").strip()
+    if not ip:
+        return JSONResponse({"ok": False, "error": "IP address is required"}, status_code=400)
+    result = await asyncio.to_thread(robot_manager.connect, ip)
+    return result
+
+
+@app.post("/api/robot/disconnect")
+async def robot_disconnect():
+    result = robot_manager.disconnect()
+    return result
+
+
+@app.get("/api/robot/status")
+async def robot_status():
+    return robot_manager.get_connection_status()
 
 
 # ─── WebSocket: Gemini Live API proxy ─────────────────────────────────────────
