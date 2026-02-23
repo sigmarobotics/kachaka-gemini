@@ -58,7 +58,6 @@ export async function loadSettings() {
         const liveGoogleSearch = document.getElementById('setting-live-google-search');
         const shelfIdsInput = document.getElementById('setting-shelf-ids');
         const cameraToggle = document.getElementById('setting-camera-to-ai');
-        const robotIpDisplay = document.getElementById('setting-robot-ip');
         const interimToggle = document.getElementById('setting-enable-interim');
         const interimPhrasesInput = document.getElementById('setting-interim-phrases');
 
@@ -99,7 +98,8 @@ export async function loadSettings() {
         if (liveGoogleSearch) liveGoogleSearch.checked = settings.live_enable_google_search || false;
         if (shelfIdsInput) shelfIdsInput.value = (settings.shelf_ids || []).join(', ');
         if (cameraToggle) cameraToggle.checked = settings.enable_camera_to_ai || false;
-        if (robotIpDisplay) robotIpDisplay.textContent = settings.robot_ip || 'N/A';
+        const robotIpInput = document.getElementById('setting-robot-ip');
+        if (robotIpInput) robotIpInput.value = settings.robot_ip || '';
 
         // Robot background info
         const robotInfoInput = document.getElementById('setting-robot-info');
@@ -224,6 +224,67 @@ async function queryModels(mode, selectId, btnId) {
     }
 }
 
+async function connectRobot() {
+    const ipInput = document.getElementById('setting-robot-ip');
+    const statusEl = document.getElementById('robot-connection-status');
+    const btn = document.getElementById('btn-robot-connect');
+    if (!ipInput || !btn) return;
+
+    const ip = ipInput.value.trim();
+    if (!ip) {
+        if (statusEl) { statusEl.textContent = 'Please enter an IP address'; statusEl.style.color = 'var(--danger)'; }
+        return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = 'Connecting...';
+    if (statusEl) { statusEl.textContent = 'Connecting...'; statusEl.style.color = 'var(--muted)'; }
+
+    try {
+        const res = await fetch('/api/robot/connect', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ip }),
+        });
+        const data = await res.json();
+        if (data.ok) {
+            if (statusEl) { statusEl.textContent = `Connected (serial: ${data.serial})`; statusEl.style.color = 'var(--mint)'; }
+        } else {
+            if (statusEl) { statusEl.textContent = `Failed: ${data.error}`; statusEl.style.color = 'var(--danger)'; }
+        }
+    } catch (e) {
+        if (statusEl) { statusEl.textContent = `Error: ${e.message}`; statusEl.style.color = 'var(--danger)'; }
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Connect';
+    }
+}
+
+async function disconnectRobot() {
+    const statusEl = document.getElementById('robot-connection-status');
+    try {
+        await fetch('/api/robot/disconnect', { method: 'POST' });
+        if (statusEl) { statusEl.textContent = 'Disconnected'; statusEl.style.color = 'var(--muted)'; }
+    } catch (e) {
+        if (statusEl) { statusEl.textContent = `Error: ${e.message}`; statusEl.style.color = 'var(--danger)'; }
+    }
+}
+
+async function loadRobotStatus() {
+    const statusEl = document.getElementById('robot-connection-status');
+    try {
+        const res = await fetch('/api/robot/status');
+        const data = await res.json();
+        if (data.connected) {
+            if (statusEl) { statusEl.textContent = `Connected to ${data.ip} (serial: ${data.serial})`; statusEl.style.color = 'var(--mint)'; }
+        } else {
+            if (statusEl) { statusEl.textContent = 'Not connected'; statusEl.style.color = 'var(--muted)'; }
+        }
+    } catch (e) {
+        // Silently fail — status will show on next poll
+    }
+}
+
 export function initSettings() {
     const saveBtn = document.getElementById('btn-save-settings');
     if (saveBtn) {
@@ -291,6 +352,15 @@ export function initSettings() {
         ?.addEventListener('click', loadTokenUsage);
     document.getElementById('btn-reset-tokens')
         ?.addEventListener('click', resetTokenUsage);
+
+    // Robot connection buttons
+    document.getElementById('btn-robot-connect')
+        ?.addEventListener('click', connectRobot);
+    document.getElementById('btn-robot-disconnect')
+        ?.addEventListener('click', disconnectRobot);
+
+    // Load robot connection status
+    loadRobotStatus();
 
     // Slider display updates
     for (const [sliderId, displayId] of [
@@ -544,6 +614,11 @@ async function saveSettings() {
     }
     if (cameraToggle) updates.enable_camera_to_ai = cameraToggle.checked;
     if (interimToggle) updates.enable_interim_response = interimToggle.checked;
+
+    const robotIpInput = document.getElementById('setting-robot-ip');
+    if (robotIpInput && robotIpInput.value.trim()) {
+        updates.robot_ip = robotIpInput.value.trim();
+    }
 
     const robotInfoInput = document.getElementById('setting-robot-info');
     if (robotInfoInput) updates.robot_background_info = robotInfoInput.value;

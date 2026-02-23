@@ -133,8 +133,13 @@
                                 </select>
                             </div>
                             <div class="form-group">
-                                <label>Robot IP (from environment)</label>
-                                <span id="setting-robot-ip" class="setting-display-value">N/A</span>
+                                <label>Robot IP</label>
+                                <div style="display: flex; gap: 8px; align-items: center;">
+                                    <input type="text" id="setting-robot-ip" placeholder="192.168.x.x:26400" style="flex: 1;">
+                                    <button id="btn-robot-connect" class="btn-sm" style="white-space: nowrap;">Connect</button>
+                                    <button id="btn-robot-disconnect" class="btn-sm btn-danger" style="white-space: nowrap;">Disconnect</button>
+                                </div>
+                                <small id="robot-connection-status" style="margin-top: 4px; display: block; color: var(--muted);">Not connected</small>
                             </div>
                             <div class="form-group">
                                 <label>Shelf IDs (comma separated)</label>
