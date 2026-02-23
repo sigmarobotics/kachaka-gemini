@@ -38,8 +38,8 @@ templates = Jinja2Templates(directory=TEMPLATE_DIR)
 
 @app.on_event("startup")
 async def startup_event():
-    # Auto-connect to robot from saved settings
-    robot_manager.auto_connect()
+    # Auto-connect to robot from saved settings (in thread to avoid blocking event loop)
+    await asyncio.to_thread(robot_manager.auto_connect)
     # Start Telegram bot
     token = settings_service.get("telegram_bot_token", "")
     if token:
@@ -52,7 +52,7 @@ async def startup_event():
 @app.on_event("shutdown")
 async def shutdown_event():
     await telegram_manager.stop()
-    robot_manager.disconnect()
+    await asyncio.to_thread(robot_manager.disconnect)
 
 
 # ─── Pages ────────────────────────────────────────────────────────────────────
@@ -371,7 +371,7 @@ async def robot_connect(request: Request):
 
 @app.post("/api/robot/disconnect")
 async def robot_disconnect():
-    result = robot_manager.disconnect()
+    result = await asyncio.to_thread(robot_manager.disconnect)
     return result
 
 

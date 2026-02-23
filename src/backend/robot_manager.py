@@ -4,7 +4,6 @@ Replaces robot_service.py with production-ready connection management,
 command execution, and camera streaming via kachaka_core.
 """
 
-import asyncio
 import base64
 import logging
 import threading
@@ -153,23 +152,26 @@ class RobotManager:
         }
 
     def get_map_bytes(self) -> bytes | None:
-        """Return cached PNG map bytes, fetching on first call."""
-        if not self._queries:
+        """Return cached PNG map bytes, fetching on first call.
+
+        Uses SDK directly (not KachakaQueries) to access map origin
+        coordinates which kachaka_core's get_map() does not expose.
+        """
+        if not self._conn:
             return None
         if self._map_cache is None:
             try:
-                result = self._queries.get_map()
-                if result["ok"]:
-                    self._map_cache = {
-                        "bytes": base64.b64decode(result["image_base64"]),
-                        "info": {
-                            "resolution": result["resolution"],
-                            "width": result["width"],
-                            "height": result["height"],
-                            "origin_x": 0.0,
-                            "origin_y": 0.0,
-                        },
-                    }
+                png_map = self._conn.client.get_png_map()
+                self._map_cache = {
+                    "bytes": png_map.data,
+                    "info": {
+                        "resolution": png_map.resolution,
+                        "width": png_map.width,
+                        "height": png_map.height,
+                        "origin_x": png_map.origin.x,
+                        "origin_y": png_map.origin.y,
+                    },
+                }
             except Exception as e:
                 logger.error("Failed to fetch map: %s", e)
                 return None
