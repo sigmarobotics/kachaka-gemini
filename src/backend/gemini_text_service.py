@@ -6,11 +6,12 @@ from datetime import datetime, timezone, timedelta
 from google import genai
 from google.genai import types
 
-from robot_service import robot_service
+import base64
+
+from robot_manager import robot_manager
 import settings_service
 import token_service
 from config import DEFAULT_FUNCTION_DECLARATIONS, _clamp
-from gemini_live_service import execute_function_call
 
 
 class GeminiTextSession:
@@ -233,7 +234,7 @@ class GeminiTextSession:
                         # Handle via separate API call with Google Search grounding
                         result = await self._handle_google_search(fn_args)
                     else:
-                        result = execute_function_call(fn_name, fn_args)
+                        result = await asyncio.to_thread(robot_manager.execute_function_call, fn_name, fn_args)
 
                     await self._send_to_client({
                         "type": "function_result",
@@ -249,12 +250,12 @@ class GeminiTextSession:
                     )
 
                     # For capture_camera, attach the image alongside function response
-                    if fn_name == "capture_camera" and result.get("success"):
-                        img = robot_service.get_front_camera_image()
-                        if img and hasattr(img, "data") and img.data:
+                    if fn_name == "capture_camera" and result.get("ok"):
+                        frame = robot_manager.get_camera_frame()
+                        if frame and frame.get("ok") and frame.get("image_base64"):
                             fn_response_parts.append(
                                 types.Part.from_bytes(
-                                    data=img.data,
+                                    data=base64.b64decode(frame["image_base64"]),
                                     mime_type="image/jpeg",
                                 )
                             )
