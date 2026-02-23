@@ -2,6 +2,7 @@ fastapi>=0.115,<1.0
 uvicorn>=0.34,<1.0
 websockets>=14.0,<15.0
 kachaka-api>=3.14,<4.0
+kachaka-sdk-toolkit @ git+https://github.com/Sigma-Snaken/kachaka-sdk-toolkit.git
 pillow>=10.0,<11.0
 google-genai>=1.0,<2.0
 jinja2>=3.1,<4.0
