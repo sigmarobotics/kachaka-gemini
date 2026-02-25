@@ -24,8 +24,27 @@ REPORT_DIR = os.path.join(DATA_DIR, "report")
 IMAGE_DIR = os.path.join(REPORT_DIR, "images")
 VIDEO_DIR = os.path.join(REPORT_DIR, "video")
 
-# Font paths — try NotoSansCJK first, fallback to ReportLab CID fonts
+# Font paths — search local fonts/ dir first, then system font paths
 FONT_DIR = os.path.join(os.path.dirname(__file__), "fonts")
+_SYSTEM_FONT_DIRS = [
+    "/usr/share/fonts/opentype/noto",
+    "/usr/share/fonts/truetype/noto",
+    "/usr/share/fonts/noto-cjk",
+]
+
+
+def _find_font(name):
+    """Search for a font file in local fonts/ dir and system paths."""
+    for ext in (".otf", ".ttf", ".ttc"):
+        path = os.path.join(FONT_DIR, name + ext)
+        if os.path.exists(path):
+            return path
+    for d in _SYSTEM_FONT_DIRS:
+        for ext in (".otf", ".ttf", ".ttc"):
+            path = os.path.join(d, name + ext)
+            if os.path.exists(path):
+                return path
+    return None
 
 
 def _register_cjk_fonts():
@@ -34,13 +53,13 @@ def _register_cjk_fonts():
     from reportlab.pdfbase.ttfonts import TTFont
     from reportlab.pdfbase.cidfonts import UnicodeCIDFont
 
-    normal_path = os.path.join(FONT_DIR, "NotoSansCJK-Regular.otf")
-    bold_path = os.path.join(FONT_DIR, "NotoSansCJK-Bold.otf")
+    normal_path = _find_font("NotoSansCJK-Regular")
+    bold_path = _find_font("NotoSansCJK-Bold")
 
-    if os.path.exists(normal_path):
+    if normal_path:
         try:
             pdfmetrics.registerFont(TTFont("NotoSansCJK", normal_path))
-            if os.path.exists(bold_path):
+            if bold_path:
                 pdfmetrics.registerFont(TTFont("NotoSansCJKBold", bold_path))
             else:
                 pdfmetrics.registerFont(TTFont("NotoSansCJKBold", normal_path))
