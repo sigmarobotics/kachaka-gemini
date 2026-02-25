@@ -59,19 +59,19 @@ CREATE TABLE IF NOT EXISTS patrol_runs (
     video_analysis   TEXT,
 
     -- Token usage: overall
-    total_input_tokens   INTEGER NOT NULL DEFAULT 0,
-    total_output_tokens  INTEGER NOT NULL DEFAULT 0,
+    input_tokens         INTEGER NOT NULL DEFAULT 0,
+    output_tokens        INTEGER NOT NULL DEFAULT 0,
     total_tokens         INTEGER NOT NULL DEFAULT 0,
 
     -- Token usage: report generation
     report_input_tokens  INTEGER NOT NULL DEFAULT 0,
     report_output_tokens INTEGER NOT NULL DEFAULT 0,
-    report_tokens        INTEGER NOT NULL DEFAULT 0,
+    report_total_tokens  INTEGER NOT NULL DEFAULT 0,
 
     -- Token usage: video analysis
     video_input_tokens   INTEGER NOT NULL DEFAULT 0,
     video_output_tokens  INTEGER NOT NULL DEFAULT 0,
-    video_tokens         INTEGER NOT NULL DEFAULT 0
+    video_total_tokens   INTEGER NOT NULL DEFAULT 0
 )
 """
 
@@ -111,12 +111,14 @@ def init_db():
 # ---------------------------------------------------------------------------
 
 
-def create_run(*, model_id: str | None = None) -> int:
+def create_run(start_time: str = "", model_id: str = "") -> int:
     """Insert a new patrol run and return its id."""
+    if not start_time:
+        start_time = datetime.now().isoformat()
     with db_context() as conn:
         cur = conn.execute(
             "INSERT INTO patrol_runs (start_time, model_id) VALUES (?, ?)",
-            (datetime.now().isoformat(), model_id),
+            (start_time, model_id),
         )
         return cur.lastrowid
 
@@ -133,9 +135,9 @@ def update_run(run_id: int, **fields) -> None:
     allowed = {
         "start_time", "end_time", "status", "report_content", "model_id",
         "video_path", "video_analysis",
-        "total_input_tokens", "total_output_tokens", "total_tokens",
-        "report_input_tokens", "report_output_tokens", "report_tokens",
-        "video_input_tokens", "video_output_tokens", "video_tokens",
+        "input_tokens", "output_tokens", "total_tokens",
+        "report_input_tokens", "report_output_tokens", "report_total_tokens",
+        "video_input_tokens", "video_output_tokens", "video_total_tokens",
     }
     keys = [k for k in fields if k in allowed]
     if not keys:
@@ -226,14 +228,20 @@ def get_inspections(run_id: int) -> list[dict]:
         return [dict(r) for r in rows]
 
 
-def get_inspections_by_date(date_str: str) -> list[dict]:
-    """Return inspections whose timestamp starts with *date_str* (e.g. '2026-02-25').
+def get_inspections_by_date(start_date: str, end_date: str) -> list[dict]:
+    """Return inspections within a date range.
 
-    Useful for filtering by day across all runs.
+    Args:
+        start_date: Start date string (e.g. '2026-02-25')
+        end_date: End date string (e.g. '2026-02-28')
     """
     with db_context() as conn:
         rows = conn.execute(
-            "SELECT * FROM inspection_results WHERE timestamp LIKE ? ORDER BY timestamp",
-            (f"{date_str}%",),
+            "SELECT ir.*, pr.start_time as run_start "
+            "FROM inspection_results ir "
+            "JOIN patrol_runs pr ON ir.run_id = pr.id "
+            "WHERE pr.start_time >= ? AND pr.start_time <= ? "
+            "ORDER BY ir.timestamp",
+            (start_date, end_date + " 23:59:59"),
         ).fetchall()
         return [dict(r) for r in rows]
