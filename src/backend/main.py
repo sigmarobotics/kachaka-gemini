@@ -40,6 +40,12 @@ templates = Jinja2Templates(directory=TEMPLATE_DIR)
 
 
 @app.on_event("startup")
+async def ensure_directories():
+    os.makedirs(os.path.join(DATA_DIR, "report", "images"), exist_ok=True)
+    os.makedirs(os.path.join(DATA_DIR, "report", "video"), exist_ok=True)
+
+
+@app.on_event("startup")
 async def startup_event():
     # Auto-connect to robot from saved settings (in thread to avoid blocking event loop)
     await asyncio.to_thread(robot_manager.auto_connect)
