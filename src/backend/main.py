@@ -16,10 +16,13 @@ import websockets
 from robot_manager import robot_manager
 import settings_service
 import token_service
-from config import DEFAULT_SETTINGS
+from config import DEFAULT_SETTINGS, DATA_DIR
 from gemini_live_service import GeminiLiveSession, GEMINI_WS_URL
 from gemini_text_service import GeminiTextSession
 from telegram_service import telegram_manager
+import patrol_db
+from patrol_service import patrol_service
+from report_service import report_service
 
 # Paths - support both local dev and Docker
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -60,6 +63,11 @@ async def shutdown_event():
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
+
+
+@app.get("/demo", response_class=HTMLResponse)
+async def demo_page(request: Request):
+    return templates.TemplateResponse("demo.html", {"request": request})
 
 
 # ─── Robot REST endpoints ─────────────────────────────────────────────────────
@@ -380,6 +388,85 @@ async def robot_status():
     return robot_manager.get_connection_status()
 
 
+# ─── Patrol API ──────────────────────────────────────────────────────────────
+
+@app.on_event("startup")
+async def init_patrol_db():
+    patrol_db.init_db()
+
+
+@app.get("/api/patrol/status")
+async def patrol_status():
+    return patrol_service.get_status()
+
+
+@app.post("/api/patrol/start")
+async def start_patrol(request: Request):
+    body = await request.json() if request.headers.get("content-type") == "application/json" else {}
+    points = body.get("points", None)
+    result = await asyncio.to_thread(patrol_service.start_patrol, points)
+    return result
+
+
+@app.post("/api/patrol/cancel")
+async def cancel_patrol():
+    patrol_service.cancel_patrol()
+    return {"ok": True}
+
+
+@app.get("/api/patrol/runs")
+async def get_patrol_runs(limit: int = 20, offset: int = 0):
+    runs = patrol_db.get_runs(limit=limit, offset=offset)
+    return {"runs": runs, "total": patrol_db.get_run_count()}
+
+
+@app.get("/api/patrol/runs/{run_id}")
+async def get_patrol_run(run_id: int):
+    run = patrol_db.get_run(run_id)
+    if not run:
+        return JSONResponse({"error": "Run not found"}, status_code=404)
+    inspections = patrol_db.get_inspections(run_id)
+    return {"run": run, "inspections": inspections}
+
+
+@app.get("/api/patrol/runs/{run_id}/pdf")
+async def get_patrol_pdf(run_id: int):
+    pdf_bytes = await asyncio.to_thread(report_service.generate_patrol_pdf, run_id)
+    if not pdf_bytes:
+        return JSONResponse({"error": "Failed to generate PDF"}, status_code=500)
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename=patrol_report_{run_id}.pdf"},
+    )
+
+
+@app.get("/api/patrol/report/image/{filename}")
+async def get_patrol_image(filename: str):
+    """Serve patrol inspection images."""
+    # Sanitize filename to prevent path traversal
+    safe_name = os.path.basename(filename)
+    image_path = os.path.join(DATA_DIR, "report", "images", safe_name)
+    if not os.path.exists(image_path):
+        return Response(status_code=404)
+    with open(image_path, "rb") as f:
+        return Response(content=f.read(), media_type="image/jpeg")
+
+
+@app.post("/api/patrol/analyze")
+async def generate_analysis_report(request: Request):
+    body = await request.json()
+    start_date = body.get("start_date", "")
+    end_date = body.get("end_date", "")
+    prompt = body.get("prompt", "")
+    if not start_date or not end_date:
+        return JSONResponse({"error": "start_date and end_date required"}, status_code=400)
+    result = await asyncio.to_thread(
+        report_service.generate_analysis_report, start_date, end_date, prompt
+    )
+    return result
+
+
 # ─── WebSocket: Gemini Live API proxy ─────────────────────────────────────────
 
 @app.websocket("/ws/chat")
@@ -455,6 +542,10 @@ async def ws_chat(websocket: WebSocket):
                     "type": "history_cleared",
                     "message": "Chat history cleared",
                 })
+
+            elif msg_type == "start_patrol":
+                result = await asyncio.to_thread(patrol_service.start_patrol)
+                await websocket.send_json({"type": "patrol_started", **result})
 
     except WebSocketDisconnect:
         pass
