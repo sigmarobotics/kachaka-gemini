@@ -1,7 +1,9 @@
 import asyncio
 import logging
 import base64
+from datetime import datetime, timezone, timedelta
 
+import settings_service
 from telegram import Update
 from telegram.ext import (
     Application,
@@ -65,6 +67,30 @@ class TelegramBotManager:
             logger.warning(f"[Telegram] Error during shutdown: {e}")
         self._app = None
         logger.info("[Telegram] Bot stopped")
+
+    async def send_patrol_notification(self, message: str, pdf_bytes: bytes | None = None):
+        """Send patrol completion notification to configured staff chat."""
+        chat_id = settings_service.get("telegram_chat_id", "")
+        token = settings_service.get("telegram_bot_token", "")
+        if not chat_id or not token or not self._app:
+            logger.warning("[Telegram] Cannot send patrol notification: missing config")
+            return
+
+        try:
+            bot = self._app.bot
+            await bot.send_message(chat_id=chat_id, text=message, parse_mode="Markdown")
+            if pdf_bytes:
+                from io import BytesIO
+                utc8 = timezone(timedelta(hours=8))
+                ts = datetime.now(utc8).strftime("%Y-%m-%d_%H%M%S")
+                await bot.send_document(
+                    chat_id=chat_id,
+                    document=BytesIO(pdf_bytes),
+                    filename=f"Patrol_Report_{ts}.pdf",
+                )
+            logger.info("[Telegram] Patrol notification sent to %s", chat_id)
+        except Exception as e:
+            logger.error("[Telegram] Failed to send patrol notification: %s", e)
 
     async def _get_session(self, chat_id: int) -> GeminiTextSession:
         """Get or create a GeminiTextSession for the given chat_id."""
