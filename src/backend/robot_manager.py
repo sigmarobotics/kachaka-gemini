@@ -5,6 +5,7 @@ command execution, and camera streaming via kachaka_core.
 """
 
 import base64
+import json
 import logging
 import threading
 
@@ -354,6 +355,109 @@ class RobotManager:
                 if frame and frame.get("ok"):
                     return {"ok": True, "message": "Camera frame captured, image attached"}
                 return {"ok": False, "error": "Camera not available"}
+
+            elif name == "guide_to_booth":
+                location_name = args.get("location_name", "")
+                if not location_name:
+                    return {"ok": False, "error": "location_name is required"}
+                # Resolve location name to ID
+                locations = self.get_locations()
+                matched = None
+                for loc in locations:
+                    if location_name in loc["name"] or loc["name"] in location_name:
+                        matched = loc
+                        break
+                if not matched:
+                    return {"ok": False, "error": f"找不到地點: {location_name}",
+                            "available": [l["name"] for l in locations]}
+                if not self._ctrl:
+                    return {"ok": False, "error": "Robot not connected"}
+                return self._ctrl.move_to_location(matched["id"], timeout=120)
+
+            elif name == "start_patrol":
+                from patrol_service import patrol_service
+                result = patrol_service.start_patrol()
+                return result
+
+            elif name == "get_patrol_history":
+                import patrol_db
+                patrol_db.init_db()
+                count = args.get("count", 5)
+                try:
+                    count = int(count)
+                except (TypeError, ValueError):
+                    count = 5
+                runs = patrol_db.get_runs(limit=count)
+                summaries = []
+                for r in runs:
+                    summaries.append({
+                        "run_id": r["id"],
+                        "time": r["start_time"],
+                        "status": r["status"],
+                        "summary": (r.get("report_content") or "")[:200],
+                    })
+                return {"ok": True, "history": summaries}
+
+            elif name == "check_crowd":
+                location_name = args.get("location_name", "")
+                if not location_name:
+                    return {"ok": False, "error": "location_name is required"}
+                # Move to location first
+                locations = self.get_locations()
+                matched = None
+                for loc in locations:
+                    if location_name in loc["name"] or loc["name"] in location_name:
+                        matched = loc
+                        break
+                if matched and self._ctrl:
+                    self._ctrl.move_to_location(matched["id"], timeout=120)
+                # Capture and analyze
+                from frame_hub import frame_hub
+                jpeg = frame_hub.wait_for_fresh_frame(timeout=10)
+                if not jpeg:
+                    return {"ok": False, "error": "Camera not available"}
+                # Quick Gemini analysis for crowd
+                try:
+                    from google import genai
+                    from google.genai import types
+                    api_key = settings_service.get("gemini_api_key", "")
+                    model = settings_service.get("patrol_model", "") or settings_service.get("text_model", "gemini-2.0-flash")
+                    client = genai.Client(api_key=api_key)
+                    response = client.models.generate_content(
+                        model=model,
+                        contents=[
+                            types.Content(role="user", parts=[
+                                types.Part.from_text(
+                                    text=f"請分析這張照片中 {location_name} 的人潮狀況。"
+                                         "回答：大約人數、擁擠程度（空曠/適中/擁擠）、簡短描述。繁體中文。"
+                                ),
+                                types.Part.from_bytes(data=jpeg, mime_type="image/jpeg"),
+                            ]),
+                        ],
+                    )
+                    return {"ok": True, "analysis": response.text, "location": location_name}
+                except Exception as e:
+                    return {"ok": False, "error": f"Analysis failed: {e}"}
+
+            elif name == "notify_staff":
+                message = args.get("message", "")
+                if not message:
+                    return {"ok": False, "error": "message is required"}
+                # Send via Telegram
+                chat_id = settings_service.get("telegram_chat_id", "")
+                token = settings_service.get("telegram_bot_token", "")
+                if not chat_id or not token:
+                    return {"ok": False, "error": "Telegram not configured (missing chat_id or token)"}
+                try:
+                    import urllib.request
+                    import urllib.parse
+                    url = f"https://api.telegram.org/bot{token}/sendMessage"
+                    payload = json.dumps({"chat_id": chat_id, "text": message, "parse_mode": "Markdown"})
+                    req = urllib.request.Request(url, data=payload.encode(), headers={"Content-Type": "application/json"})
+                    urllib.request.urlopen(req, timeout=10)
+                    return {"ok": True, "message": "Notification sent to staff"}
+                except Exception as e:
+                    return {"ok": False, "error": f"Telegram send failed: {e}"}
 
             else:
                 return {"ok": False, "error": f"Unknown function: {name}"}
