@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kachaka 展覽導覽</title>
+    <link rel="stylesheet" href="/static/css/demo.css">
+    <link rel="icon" type="image/png" href="/static/favicon.png">
+</head>
+
+<body>
+    <div class="demo-container">
+
+        <!-- ═══ HEADER ═══ -->
+        <header class="demo-header">
+            <div class="demo-brand">
+                <img src="/static/favicon.png" alt="logo" class="demo-logo">
+                <span class="demo-title">Kachaka 智慧導覽</span>
+            </div>
+
+            <div class="demo-header-controls">
+                <!-- Text / Live mode toggle -->
+                <label class="mode-toggle" title="切換文字/語音模式">
+                    <input type="checkbox" id="mode-toggle">
+                    <span class="mode-toggle-slider"></span>
+                    <span class="mode-toggle-label mode-label-text">文字</span>
+                    <span class="mode-toggle-label mode-label-live">語音</span>
+                </label>
+
+                <!-- Battery indicator -->
+                <div class="demo-status">
+                    <span class="demo-battery" id="demo-battery" title="電池電量">
+                        <svg class="battery-icon" viewBox="0 0 24 14" width="28" height="16">
+                            <rect x="0.5" y="0.5" width="20" height="13" rx="2" ry="2" fill="none" stroke="currentColor" stroke-width="1"/>
+                            <rect x="21" y="4" width="2.5" height="6" rx="1" fill="currentColor"/>
+                            <rect class="battery-fill" x="2" y="2" width="17" height="9.5" rx="1" fill="currentColor"/>
+                        </svg>
+                        <span class="battery-text">--%</span>
+                    </span>
+                </div>
+            </div>
+        </header>
+
+        <!-- ═══ MAIN SPLIT VIEW ═══ -->
+        <main class="split-view">
+
+            <!-- LEFT: Camera + Map -->
+            <div class="camera-panel">
+                <div class="camera-feed">
+                    <img id="demo-camera-img" src="/api/camera/front" alt="機器人前置鏡頭">
+                    <div class="camera-label">即時影像</div>
+                </div>
+                <div class="map-mini">
+                    <canvas id="demo-map-canvas"></canvas>
+                    <div class="map-label">地圖</div>
+                </div>
+            </div>
+
+            <!-- RIGHT: Chat -->
+            <div class="chat-panel">
+                <div id="demo-chat-messages" class="chat-messages">
+                    <div class="chat-bubble system">
+                        歡迎來到展覽！我是您的智慧導覽助手，請問有什麼可以幫您的嗎？
+                    </div>
+                </div>
+
+                <div class="chat-input-bar">
+                    <input type="text" id="demo-chat-input" placeholder="輸入訊息..." autocomplete="off">
+                    <button id="btn-demo-send" class="btn-demo-send" title="發送">
+                        <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor">
+                            <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+                        </svg>
+                    </button>
+                    <button id="btn-demo-mic" class="btn-demo-mic" title="語音輸入" style="display: none;">
+                        <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor">
+                            <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
+                            <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
+                        </svg>
+                    </button>
+                    <!-- Hidden connect button (auto-connect on load) -->
+                    <button id="btn-demo-connect" style="display: none;"></button>
+                </div>
+            </div>
+        </main>
+
+        <!-- ═══ QUICK ACTIONS ═══ -->
+        <section class="quick-actions" id="demo-quick-actions">
+            <button class="quick-action-btn" data-action="guide">
+                <span class="quick-action-icon">🗺️</span>
+                <span class="quick-action-text">導覽</span>
+            </button>
+            <button class="quick-action-btn" data-action="deliver">
+                <span class="quick-action-icon">🥤</span>
+                <span class="quick-action-text">送飲料</span>
+            </button>
+            <button class="quick-action-btn" data-action="patrol">
+                <span class="quick-action-icon">🔍</span>
+                <span class="quick-action-text">開始巡檢</span>
+            </button>
+            <button class="quick-action-btn" data-action="report">
+                <span class="quick-action-icon">📋</span>
+                <span class="quick-action-text">查看報告</span>
+            </button>
+        </section>
+
+        <!-- ═══ PATROL RESULTS PANEL ═══ -->
+        <section class="patrol-panel" id="demo-patrol-panel">
+            <div class="patrol-panel-header" id="demo-patrol-toggle">
+                <span class="patrol-panel-title">巡檢結果 / 歷史紀錄</span>
+                <span class="patrol-toggle-icon">&#9660;</span>
+            </div>
+            <div class="patrol-panel-body">
+                <div id="demo-patrol-list" class="patrol-list">
+                    <div class="patrol-empty">尚無巡檢紀錄</div>
+                </div>
+            </div>
+        </section>
+
+    </div>
+
+    <!-- ═══ WAVEFORM OVERLAY (for Live mode audio visualization) ═══ -->
+    <div id="waveform-overlay" class="waveform-overlay">
+        <canvas id="waveform-canvas"></canvas>
+        <div id="waveform-status" class="waveform-status">正在聆聽...</div>
+        <button class="stop-btn" id="btn-waveform-stop">停止</button>
+    </div>
+
+    <!-- ═══ TYPING INDICATOR TEMPLATE ═══ -->
+    <template id="typing-indicator-template">
+        <div class="typing-indicator">
+            <span></span>
+            <span></span>
+            <span></span>
+        </div>
+    </template>
+
+    <script type="module" src="/static/js/demo-app.js"></script>
+</body>
+
+</html>
