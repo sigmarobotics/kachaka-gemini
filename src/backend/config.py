@@ -98,6 +98,66 @@ DEFAULT_FUNCTION_DECLARATIONS = [
         ),
         "parameters": {"type": "object", "properties": {}},
     },
+    {
+        "name": "guide_to_booth",
+        "description": "導覽帶位指令。當訪客要求『帶我去某攤位』、『我想看XXX』時使用。",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "location_name": {
+                    "type": "string",
+                    "description": "目標攤位或地點名稱",
+                }
+            },
+            "required": ["location_name"],
+        },
+    },
+    {
+        "name": "start_patrol",
+        "description": "啟動巡檢指令。當用戶要求『開始巡檢』、『去巡邏看看』時使用。",
+        "parameters": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "get_patrol_history",
+        "description": "查詢巡檢歷史。當用戶詢問『上次巡檢結果』、『巡檢紀錄』時使用。",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "count": {
+                    "type": "integer",
+                    "description": "查詢最近幾筆紀錄（預設 5）",
+                }
+            },
+        },
+    },
+    {
+        "name": "check_crowd",
+        "description": "人潮檢查指令。當用戶問『那邊人多不多』、『看看攤位狀況』時使用。",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "location_name": {
+                    "type": "string",
+                    "description": "要檢查的地點名稱",
+                }
+            },
+            "required": ["location_name"],
+        },
+    },
+    {
+        "name": "notify_staff",
+        "description": "通知工作人員。當需要推送訊息給工作人員時使用。",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "type": "string",
+                    "description": "要通知的訊息內容",
+                }
+            },
+            "required": ["message"],
+        },
+    },
 ]
 
 DEFAULT_INTERIM_PHRASES = {
@@ -107,6 +167,11 @@ DEFAULT_INTERIM_PHRASES = {
     "get_robot_status": "正在查詢機器人狀態",
     "cancel_command": "正在取消目前的指令",
     "capture_camera": "正在擷取相機畫面",
+    "guide_to_booth": "好的，正在帶你過去",
+    "start_patrol": "好的，正在啟動巡檢",
+    "get_patrol_history": "正在查詢巡檢紀錄",
+    "check_crowd": "正在前往查看人潮狀況",
+    "notify_staff": "正在通知工作人員",
 }
 
 DEFAULT_PERSONA = (
@@ -288,4 +353,21 @@ DEFAULT_SETTINGS = {
     "interim_phrases": DEFAULT_INTERIM_PHRASES,
     "interim_audio": {},
     "robot_ip": ROBOT_IP,
+    # Exhibition / Patrol settings
+    "patrol_points": [],           # list of {name, location_id, prompt}
+    "patrol_model": "",            # empty = use text_model
+    "patrol_system_prompt": "你是一個巡檢機器人，使用一般標準進行檢查就好，不用太嚴格",
+    "video_analysis_prompt": "請分析這段巡檢影片，描述觀察到的環境狀況、異常事項及建議。使用繁體中文。",
+    "exhibition_title": "AI 機器人互動展示",
+    "exhibition_quick_actions": [
+        {"label": "導覽", "command": "帶我去參觀"},
+        {"label": "送飲料", "command": "幫我送飲料"},
+        {"label": "開始巡檢", "command": "開始巡檢"},
+        {"label": "查看報告", "action": "show_history"},
+    ],
+    "drink_shelf_id": "S01",
+    "drink_shelf_home": "",        # location_id for drink shelf home position
+    "patrol_telegram_notify": True,
+    "crowd_telegram_notify": True,
+    "telegram_chat_id": "",        # Telegram chat_id for staff notifications
 }
