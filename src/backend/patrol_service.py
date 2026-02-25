@@ -397,6 +397,32 @@ class PatrolService:
                 report_total_tokens=summary.get("total_tokens", 0),
             )
 
+            # Send Telegram notification if enabled
+            if settings_service.get("patrol_telegram_notify", True):
+                try:
+                    from telegram_service import telegram_manager
+                    from report_service import report_service as _report_svc
+
+                    # Generate concise Telegram message
+                    tg_message = f"*巡檢完成* ({len(inspections)} 個檢查點)\n"
+                    ng_count = sum(1 for i in inspections if i.get("is_ng"))
+                    tg_message += f"正常: {len(inspections) - ng_count} | 異常: {ng_count}\n\n"
+                    if summary:
+                        tg_message += summary.get("text", "")[:500]
+
+                    # Generate PDF
+                    pdf_bytes = _report_svc.generate_patrol_pdf(run_id)
+
+                    # Send async from sync thread
+                    import asyncio
+                    loop = asyncio.new_event_loop()
+                    loop.run_until_complete(
+                        telegram_manager.send_patrol_notification(tg_message, pdf_bytes)
+                    )
+                    loop.close()
+                except Exception as e:
+                    logger.error("Telegram notification failed: %s", e)
+
             self._status = PatrolStatus.COMPLETED
             self._emit_progress("completed", {
                 "report": summary.get("text", ""),
