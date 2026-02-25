@@ -108,6 +108,7 @@
                     <button class="settings-tab-btn active" data-settings-tab="general">General</button>
                     <button class="settings-tab-btn" data-settings-tab="text-api">Text API</button>
                     <button class="settings-tab-btn" data-settings-tab="live-api">Live API</button>
+                    <button class="settings-tab-btn" data-settings-tab="patrol">Patrol / Exhibition</button>
                 </div>
 
                 <div class="settings-container">
@@ -396,6 +397,72 @@
                                 </div>
                                 <div id="interim-audio-status" class="interim-audio-list"></div>
                             </div>
+                        </div>
+                    </div>
+
+                    <!-- ═══ PATROL / EXHIBITION TAB ═══ -->
+                    <div class="settings-pane" id="settings-pane-patrol" style="display: none;">
+                        <div class="settings-column">
+
+                            <!-- ═══ PATROL SETTINGS ═══ -->
+                            <h3 class="settings-section-title">Patrol Settings</h3>
+
+                            <div class="form-group">
+                                <label>巡檢點位</label>
+                                <div id="patrol-points-editor">
+                                    <div id="patrol-points-list"></div>
+                                    <button class="btn-small" id="btn-add-patrol-point">+ 新增巡檢點</button>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>巡檢模型</label>
+                                <div class="model-select-row">
+                                    <select id="patrol-model"></select>
+                                    <button class="btn-small btn-query-models" id="btn-query-patrol-models">Query</button>
+                                </div>
+                                <small>留空使用 Text 模型</small>
+                            </div>
+                            <div class="form-group">
+                                <label>巡檢系統提示</label>
+                                <textarea id="patrol-system-prompt" rows="3" placeholder="巡檢時使用的系統提示..."></textarea>
+                            </div>
+                            <div class="form-group">
+                                <label>影片分析提示</label>
+                                <textarea id="video-analysis-prompt" rows="3" placeholder="影片分析時使用的提示..."></textarea>
+                            </div>
+
+                            <!-- ═══ EXHIBITION SETTINGS ═══ -->
+                            <h3 class="settings-section-title">Exhibition Settings</h3>
+
+                            <div class="form-group">
+                                <label>展覽標題</label>
+                                <input type="text" id="exhibition-title" placeholder="展覽名稱">
+                            </div>
+                            <div class="form-group">
+                                <label>飲料層架 ID</label>
+                                <input type="text" id="drink-shelf-id" placeholder="S01">
+                            </div>
+                            <div class="form-group">
+                                <label>飲料層架歸位地點</label>
+                                <select id="drink-shelf-home"></select>
+                            </div>
+
+                            <!-- ═══ TELEGRAM NOTIFICATION SETTINGS ═══ -->
+                            <h3 class="settings-section-title">Telegram Notification</h3>
+
+                            <div class="form-group">
+                                <label>Staff Chat ID</label>
+                                <input type="text" id="telegram-chat-id" placeholder="e.g. -1001234567890">
+                            </div>
+                            <div class="form-group" style="flex-direction: row; align-items: center; gap: 12px;">
+                                <input type="checkbox" id="patrol-telegram-notify" style="width: auto;">
+                                <label for="patrol-telegram-notify" style="margin: 0; cursor: pointer;">巡檢完成通知</label>
+                            </div>
+                            <div class="form-group" style="flex-direction: row; align-items: center; gap: 12px;">
+                                <input type="checkbox" id="crowd-telegram-notify" style="width: auto;">
+                                <label for="crowd-telegram-notify" style="margin: 0; cursor: pointer;">人潮檢查通知</label>
+                            </div>
+
                         </div>
                     </div>
 
