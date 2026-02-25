@@ -30,6 +30,7 @@ _SYSTEM_FONT_DIRS = [
     "/usr/share/fonts/opentype/noto",
     "/usr/share/fonts/truetype/noto",
     "/usr/share/fonts/noto-cjk",
+    "/usr/share/fonts/truetype/wqy",
 ]
 
 
@@ -65,7 +66,17 @@ def _register_cjk_fonts():
                 pdfmetrics.registerFont(TTFont("NotoSansCJKBold", normal_path))
             return "NotoSansCJK", "NotoSansCJKBold"
         except Exception as e:
-            logger.warning("Failed to load NotoSansCJK: %s, falling back to CID", e)
+            logger.warning("Failed to load NotoSansCJK: %s, trying alternatives", e)
+
+    # Try WenQuanYi Zen Hei (smaller package, good CJK coverage)
+    wqy_path = _find_font("wqy-zenhei")
+    if wqy_path:
+        try:
+            pdfmetrics.registerFont(TTFont("WQYZenHei", wqy_path))
+            pdfmetrics.registerFont(TTFont("WQYZenHeiBold", wqy_path))
+            return "WQYZenHei", "WQYZenHeiBold"
+        except Exception as e:
+            logger.warning("Failed to load WQY Zen Hei: %s, falling back to CID", e)
 
     # Fallback to CID font
     try:
