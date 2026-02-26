@@ -173,6 +173,10 @@ export async function loadSettings() {
 
         // Load token usage
         await loadTokenUsage();
+
+        // Load profile list
+        await loadProfileList();
+        setupProfileButtons();
     } catch (e) {
         console.error('Failed to load settings:', e);
     }
@@ -1169,4 +1173,90 @@ function collectPatrolSettings() {
     result.patrol_points = collectPatrolPoints();
 
     return result;
+}
+
+// ─── Profiles ────────────────────────────────────────────────────────────────
+
+async function loadProfileList() {
+    try {
+        const res = await fetch('/api/profiles');
+        if (!res.ok) return;
+        const names = await res.json();
+        const select = document.getElementById('profile-select');
+        if (!select) return;
+        const current = select.value;
+        select.innerHTML = '<option value="">-- Select Profile --</option>';
+        for (const name of names) {
+            const opt = document.createElement('option');
+            opt.value = name;
+            opt.textContent = name;
+            select.appendChild(opt);
+        }
+        if (current) select.value = current;
+    } catch (e) {
+        console.error('Failed to load profiles:', e);
+    }
+}
+
+function setupProfileButtons() {
+    const saveBtn = document.getElementById('btn-profile-save');
+    const loadBtn = document.getElementById('btn-profile-load');
+    const deleteBtn = document.getElementById('btn-profile-delete');
+
+    if (saveBtn) saveBtn.addEventListener('click', async () => {
+        const name = prompt('Profile name:');
+        if (!name || !name.trim()) return;
+        try {
+            const res = await fetch('/api/profiles', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: name.trim() }),
+            });
+            if (res.ok) {
+                alert(`Profile "${name.trim()}" saved.`);
+                await loadProfileList();
+                document.getElementById('profile-select').value = name.trim();
+            }
+        } catch (e) {
+            alert('Failed to save profile.');
+        }
+    });
+
+    if (loadBtn) loadBtn.addEventListener('click', async () => {
+        const select = document.getElementById('profile-select');
+        const name = select?.value;
+        if (!name) { alert('Select a profile first.'); return; }
+        if (!confirm(`Load profile "${name}"? This will overwrite current settings.`)) return;
+        try {
+            const res = await fetch('/api/profiles/load', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name }),
+            });
+            if (res.ok) {
+                alert(`Profile "${name}" loaded. Reloading page...`);
+                location.reload();
+            }
+        } catch (e) {
+            alert('Failed to load profile.');
+        }
+    });
+
+    if (deleteBtn) deleteBtn.addEventListener('click', async () => {
+        const select = document.getElementById('profile-select');
+        const name = select?.value;
+        if (!name) { alert('Select a profile first.'); return; }
+        if (!confirm(`Delete profile "${name}"?`)) return;
+        try {
+            const res = await fetch(`/api/profiles/${encodeURIComponent(name)}`, {
+                method: 'DELETE',
+            });
+            if (res.ok) {
+                alert(`Profile "${name}" deleted.`);
+                await loadProfileList();
+            }
+        } catch (e) {
+            alert('Failed to delete profile.');
+        }
+    });
 }
