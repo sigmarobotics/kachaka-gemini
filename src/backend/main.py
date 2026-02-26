@@ -15,6 +15,7 @@ import websockets
 
 from robot_manager import robot_manager
 import settings_service
+import profile_service
 import token_service
 from config import DEFAULT_SETTINGS, DATA_DIR
 from gemini_live_service import GeminiLiveSession, GEMINI_WS_URL
@@ -188,6 +189,44 @@ async def save_settings(request: Request):
             except Exception as e:
                 print(f"[Telegram] Failed to start bot: {e}")
     return {"status": "ok", "settings": updated}
+
+
+# ─── Profile endpoints ────────────────────────────────────────────────────────
+
+@app.get("/api/profiles")
+async def list_profiles():
+    return profile_service.list_profiles()
+
+
+@app.post("/api/profiles")
+async def save_profile(request: Request):
+    body = await request.json()
+    name = body.get("name", "").strip()
+    if not name:
+        return JSONResponse({"error": "name is required"}, status_code=400)
+    settings = settings_service.get_all()
+    profile_service.save_profile(name, settings)
+    return {"ok": True, "name": name}
+
+
+@app.post("/api/profiles/load")
+async def load_profile(request: Request):
+    body = await request.json()
+    name = body.get("name", "").strip()
+    if not name:
+        return JSONResponse({"error": "name is required"}, status_code=400)
+    profile = profile_service.load_profile(name)
+    if profile is None:
+        return JSONResponse({"error": "profile not found"}, status_code=404)
+    settings_service.save(profile)
+    return {"ok": True, "name": name}
+
+
+@app.delete("/api/profiles/{name}")
+async def delete_profile(name: str):
+    if profile_service.delete_profile(name):
+        return {"ok": True}
+    return JSONResponse({"error": "profile not found"}, status_code=404)
 
 
 @app.get("/api/token_usage")
