@@ -245,3 +245,22 @@ def get_inspections_by_date(start_date: str, end_date: str) -> list[dict]:
             (start_date, end_date + " 23:59:59"),
         ).fetchall()
         return [dict(r) for r in rows]
+
+
+def get_daily_token_stats() -> list[dict]:
+    """Return daily aggregated token usage from patrol_runs.
+
+    Returns a list of dicts with keys: date, input, output, total.
+    """
+    with db_context() as conn:
+        rows = conn.execute(
+            "SELECT DATE(start_time) as date, "
+            "SUM(input_tokens) as input, "
+            "SUM(output_tokens) as output, "
+            "SUM(total_tokens) as total "
+            "FROM patrol_runs "
+            "WHERE start_time IS NOT NULL AND start_time != '' "
+            "GROUP BY DATE(start_time) "
+            "ORDER BY date"
+        ).fetchall()
+        return [dict(r) for r in rows]

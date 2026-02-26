@@ -352,6 +352,7 @@ DEFAULT_SETTINGS = {
     "enable_interim_response": False,
     "interim_phrases": DEFAULT_INTERIM_PHRASES,
     "interim_audio": {},
+    "live_auto_interrupt": True,    # True = auto VAD, False = manual interrupt button
     "robot_ip": ROBOT_IP,
     # Exhibition / Patrol settings
     "patrol_points": [],           # list of {name, location_id, prompt}

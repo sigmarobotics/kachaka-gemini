@@ -102,16 +102,27 @@ class GeminiLiveSession:
             if enable_google_search:
                 tools.append({"googleSearch": {}})
 
-            setup_msg = {
-                "setup": {
-                    "model": f"models/{model}",
-                    "generationConfig": generation_config,
-                    "systemInstruction": {
-                        "parts": [{"text": system_prompt}]
-                    },
-                    "tools": tools,
-                }
+            # VAD configuration
+            auto_interrupt = settings.get("live_auto_interrupt", True)
+            setup_config = {
+                "model": f"models/{model}",
+                "generationConfig": generation_config,
+                "systemInstruction": {
+                    "parts": [{"text": system_prompt}]
+                },
+                "tools": tools,
             }
+            if not auto_interrupt:
+                setup_config["realtimeInputConfig"] = {
+                    "automaticActivityDetection": {
+                        "disabled": False,
+                        "startOfSpeechSensitivity": "START_SENSITIVITY_LOW",
+                        "endOfSpeechSensitivity": "END_SENSITIVITY_LOW",
+                        "silenceDurationMs": 500,
+                    }
+                }
+
+            setup_msg = {"setup": setup_config}
 
             await self.gemini_ws.send(json.dumps(setup_msg))
 
@@ -172,6 +183,17 @@ class GeminiLiveSession:
             }
         }
         await self.gemini_ws.send(json.dumps(msg))
+
+    async def send_interrupt(self):
+        """Manually interrupt the model's current generation via activity signals."""
+        if not self.gemini_ws:
+            return
+        await self.gemini_ws.send(json.dumps(
+            {"realtimeInput": {"activityStart": {}}}
+        ))
+        await self.gemini_ws.send(json.dumps(
+            {"realtimeInput": {"activityEnd": {}}}
+        ))
 
     async def _stream_camera(self):
         """Periodically send camera frames to Gemini from CameraStreamer."""
@@ -247,6 +269,10 @@ class GeminiLiveSession:
                             "type": "audio",
                             "data": inline["data"],
                         })
+
+            # VAD interruption — user started speaking while model was generating
+            if content.get("interrupted", False):
+                await self._send_to_client({"type": "interrupted"})
 
             if content.get("turnComplete", False):
                 await self._send_to_client({"type": "turn_complete"})

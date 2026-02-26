@@ -7,7 +7,7 @@ import urllib.request
 import urllib.error
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
@@ -74,6 +74,11 @@ async def index(request: Request):
 @app.get("/demo", response_class=HTMLResponse)
 async def demo_page(request: Request):
     return templates.TemplateResponse("demo.html", {"request": request})
+
+
+@app.get("/demo/patrol", response_class=HTMLResponse)
+async def demo_patrol_page(request: Request):
+    return templates.TemplateResponse("demo-patrol.html", {"request": request})
 
 
 # ─── Robot REST endpoints ─────────────────────────────────────────────────────
@@ -447,16 +452,31 @@ async def get_patrol_pdf(run_id: int):
     )
 
 
-@app.get("/api/patrol/report/image/{filename}")
-async def get_patrol_image(filename: str):
-    """Serve patrol inspection images."""
-    # Sanitize filename to prevent path traversal
-    safe_name = os.path.basename(filename)
-    image_path = os.path.join(DATA_DIR, "report", "images", safe_name)
-    if not os.path.exists(image_path):
+@app.get("/api/patrol/report/image/{filepath:path}")
+async def get_patrol_image(filepath: str):
+    """Serve patrol inspection images (supports subdirectory paths)."""
+    # Resolve and verify the path stays within IMAGE_DIR
+    base = os.path.realpath(os.path.join(DATA_DIR, "report", "images"))
+    image_path = os.path.realpath(os.path.join(base, filepath))
+    if not image_path.startswith(base) or not os.path.isfile(image_path):
         return Response(status_code=404)
     with open(image_path, "rb") as f:
         return Response(content=f.read(), media_type="image/jpeg")
+
+
+@app.get("/api/patrol/report/video/{filename}")
+async def get_patrol_video(filename: str):
+    """Serve patrol video recordings."""
+    base = os.path.realpath(os.path.join(DATA_DIR, "report", "video"))
+    video_path = os.path.realpath(os.path.join(base, filename))
+    if not video_path.startswith(base) or not os.path.isfile(video_path):
+        return Response(status_code=404)
+    return FileResponse(video_path, media_type="video/mp4")
+
+
+@app.get("/api/patrol/token_stats")
+async def get_patrol_token_stats():
+    return patrol_db.get_daily_token_stats()
 
 
 @app.post("/api/patrol/analyze")
@@ -538,6 +558,13 @@ async def ws_chat(websocket: WebSocket):
                 if session:
                     try:
                         await session.send_audio(data.get("data", ""))
+                    except Exception:
+                        pass
+
+            elif msg_type == "interrupt":
+                if session and hasattr(session, 'send_interrupt'):
+                    try:
+                        await session.send_interrupt()
                     except Exception:
                         pass
 

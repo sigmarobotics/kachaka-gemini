@@ -123,7 +123,10 @@
     <div id="waveform-overlay" class="waveform-overlay">
         <canvas id="waveform-canvas"></canvas>
         <div id="waveform-status" class="waveform-status">正在聆聽...</div>
-        <button class="stop-btn" id="btn-waveform-stop">停止</button>
+        <div class="waveform-buttons">
+            <button class="interrupt-btn" id="btn-waveform-interrupt" style="display:none;">打斷</button>
+            <button class="stop-btn" id="btn-waveform-stop">停止語音</button>
+        </div>
     </div>
 
     <!-- ═══ TYPING INDICATOR TEMPLATE ═══ -->

@@ -682,14 +682,19 @@ html, body {
     text-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
 }
 
-.waveform-overlay .stop-btn {
+.waveform-buttons {
     pointer-events: auto;
+    display: flex;
+    gap: 16px;
     margin-top: 24px;
+}
+
+.waveform-overlay .stop-btn,
+.waveform-overlay .interrupt-btn {
+    pointer-events: auto;
     padding: 12px 36px;
     border: none;
     border-radius: var(--demo-radius-btn);
-    background: rgba(255, 255, 255, 0.9);
-    color: var(--demo-ng);
     font-size: 16px;
     font-weight: 600;
     font-family: var(--demo-font);
@@ -698,12 +703,23 @@ html, body {
     transition: transform 0.15s ease, background 0.2s ease;
 }
 
-.waveform-overlay .stop-btn:hover {
-    background: white;
+.waveform-overlay .stop-btn {
+    background: rgba(255, 255, 255, 0.9);
+    color: var(--demo-ng);
+}
+
+.waveform-overlay .interrupt-btn {
+    background: rgba(255, 180, 60, 0.95);
+    color: #fff;
+}
+
+.waveform-overlay .stop-btn:hover,
+.waveform-overlay .interrupt-btn:hover {
     transform: scale(1.05);
 }
 
-.waveform-overlay .stop-btn:active {
+.waveform-overlay .stop-btn:active,
+.waveform-overlay .interrupt-btn:active {
     transform: scale(0.95);
 }
 

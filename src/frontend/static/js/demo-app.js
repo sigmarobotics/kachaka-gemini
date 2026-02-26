@@ -1,11 +1,9 @@
 // demo-app.js — Exhibition demo page entry point
 import state, { escapeHtml } from './state.js';
-
-// Sub-modules will be imported as they are created
-// import { initDemoChat, sendText, connectChat, disconnectChat } from './demo-chat.js';
-// import { initDemoStatus } from './demo-status.js';
-// import { initDemoPatrol } from './demo-patrol.js';
-// import { initDemoVoice } from './demo-voice.js';
+import { initDemoChat, startMic, stopMic, isMicRecording, playAudioChunk, stopPlayback, setOnPlaybackAmplitude, setOnMicAmplitude } from './demo-chat.js';
+import { initDemoStatus } from './demo-status.js';
+import { initDemoPatrol } from './demo-patrol.js';
+import { initDemoVoice, showListening, showSpeaking, hide as hideWaveform, onMicAmplitude, onPlaybackAmplitude } from './demo-voice.js';
 
 let ws = null;
 let isConnected = false;
@@ -53,6 +51,47 @@ async function init() {
                 e.preventDefault();
                 handleSend();
             }
+        });
+    }
+
+    // Initialize sub-modules
+    initDemoChat();
+    initDemoVoice();
+    initDemoStatus();
+    initDemoPatrol();
+
+    // Override mic button to orchestrate waveform overlay
+    // (must be after initDemoChat which adds its own listener)
+    const micBtn = document.getElementById('btn-demo-mic');
+    if (micBtn) {
+        const newMicBtn = micBtn.cloneNode(true);
+        micBtn.parentNode.replaceChild(newMicBtn, micBtn);
+        newMicBtn.addEventListener('click', handleMicToggle);
+    }
+
+    // Wire amplitude callbacks: demo-chat → demo-voice waveform
+    setOnMicAmplitude(onMicAmplitude);
+    setOnPlaybackAmplitude(onPlaybackAmplitude);
+
+    // Wire voice-stop event (from waveform overlay stop button)
+    // Exits live mode entirely and switches back to text
+    window.addEventListener('voice-stop', () => {
+        stopMic();
+        stopPlayback();
+        hideWaveform();
+        switchToTextMode();
+    });
+
+    // Wire interrupt button (manual interrupt for noisy environments)
+    const interruptBtn = document.getElementById('btn-waveform-interrupt');
+    if (interruptBtn) {
+        interruptBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'interrupt' }));
+            }
+            stopPlayback();
+            showListening();
         });
     }
 
@@ -120,6 +159,11 @@ function handleMessage(msg) {
                 if (msg.api_mode) currentMode = msg.api_mode;
                 updateConnectionUI(true);
                 addSystemMessage('已連接 Gemini ✓');
+                // Auto-start mic when connected in live mode
+                if (currentMode === 'live' && !isMicRecording()) {
+                    startMic();
+                    showListening();
+                }
             } else {
                 addSystemMessage(msg.message || '');
             }
@@ -130,10 +174,17 @@ function handleMessage(msg) {
             break;
 
         case 'audio':
-            // Forward to demo-voice module for playback + waveform
-            if (window._demoVoiceOnAudio) {
-                window._demoVoiceOnAudio(msg.data);
-            }
+            // Play audio and show speaking waveform
+            showSpeaking();
+            playAudioChunk(msg.data);
+            updateInterruptBtn(true);
+            break;
+
+        case 'interrupted':
+            // User interrupted AI — stop playback, resume listening
+            stopPlayback();
+            updateInterruptBtn(false);
+            if (currentMode === 'live') showListening();
             break;
 
         case 'function_call':
@@ -145,8 +196,15 @@ function handleMessage(msg) {
             break;
 
         case 'turn_complete':
-            // Typing indicator off
             hideTypingIndicator();
+            updateInterruptBtn(false);
+            // In live mode, stay in listening state (don't close waveform)
+            if (currentMode === 'live') {
+                stopPlayback();
+                showListening();
+            } else {
+                hideWaveform();
+            }
             break;
 
         case 'error':
@@ -229,10 +287,35 @@ function handleSend() {
     showTypingIndicator();
 }
 
-// ─── Mode Toggle ─────────────────────────────────────
-async function handleModeToggle() {
-    const modeToggle = document.getElementById('mode-toggle');
-    const newMode = modeToggle.checked ? 'live' : 'text';
+// ─── Interrupt Button ────────────────────────────────
+function updateInterruptBtn(speaking) {
+    const btn = document.getElementById('btn-waveform-interrupt');
+    if (!btn) return;
+    // Show interrupt button when AI is speaking AND auto-interrupt is off
+    const autoInterrupt = settings.live_auto_interrupt !== false;
+    btn.style.display = (speaking && !autoInterrupt) ? '' : 'none';
+}
+
+// ─── Mic Toggle (orchestrates audio + waveform) ─────
+function handleMicToggle() {
+    if (isMicRecording()) {
+        stopMic();
+        stopPlayback();
+        hideWaveform();
+    } else {
+        startMic();
+        showListening();
+    }
+}
+
+// ─── Mode Switching ──────────────────────────────────
+async function switchMode(newMode) {
+    // Stop mic/playback if leaving live
+    if (currentMode === 'live' && newMode !== 'live') {
+        stopMic();
+        stopPlayback();
+        hideWaveform();
+    }
 
     // Disconnect current session
     disconnectWebSocket();
@@ -252,8 +335,23 @@ async function handleModeToggle() {
     updateModeLabel();
     updateModeUI();
 
+    // Sync toggle checkbox
+    const toggle = document.getElementById('mode-toggle');
+    if (toggle) toggle.checked = newMode === 'live';
+
     // Reconnect with new mode
     setTimeout(connectWebSocket, 500);
+    // Auto-start mic is handled in the 'status' connected handler
+}
+
+async function handleModeToggle() {
+    const modeToggle = document.getElementById('mode-toggle');
+    const newMode = modeToggle.checked ? 'live' : 'text';
+    await switchMode(newMode);
+}
+
+function switchToTextMode() {
+    switchMode('text');
 }
 
 function updateModeLabel() {
@@ -289,9 +387,7 @@ function setupQuickActions() {
         btn.textContent = action.label;
         btn.addEventListener('click', () => {
             if (action.action === 'show_history') {
-                // Toggle patrol panel
-                const panel = document.getElementById('demo-patrol-panel');
-                if (panel) panel.classList.toggle('expanded');
+                window.open('/demo/patrol', '_blank');
             } else if (action.command) {
                 // Send as chat message
                 if (ws && ws.readyState === WebSocket.OPEN) {

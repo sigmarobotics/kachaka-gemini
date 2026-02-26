@@ -102,7 +102,7 @@ async function loadRunDetail(runId) {
         detailEl.innerHTML = inspections.map(insp => {
             const badge = insp.is_ng ? '<span class="badge-ng">NG</span>' : '<span class="badge-ok">OK</span>';
             const imgHtml = insp.image_path
-                ? `<img src="/api/patrol/report/image/${escapeHtml(insp.image_path.split('/').pop())}" class="patrol-thumb" alt="inspection">`
+                ? `<img src="/api/patrol/report/image/${encodeURI(insp.image_path)}" class="patrol-thumb" alt="inspection">`
                 : '';
             return `
                 <div class="inspection-card">

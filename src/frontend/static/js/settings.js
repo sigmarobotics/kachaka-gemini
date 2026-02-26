@@ -128,6 +128,7 @@ export async function loadSettings() {
         const telegramChatId = document.getElementById('telegram-chat-id');
         const patrolTelegramNotify = document.getElementById('patrol-telegram-notify');
         const crowdTelegramNotify = document.getElementById('crowd-telegram-notify');
+        const liveAutoInterrupt = document.getElementById('live-auto-interrupt');
 
         if (patrolSystemPrompt) patrolSystemPrompt.value = settings.patrol_system_prompt || '';
         if (videoAnalysisPrompt) videoAnalysisPrompt.value = settings.video_analysis_prompt || '';
@@ -136,6 +137,7 @@ export async function loadSettings() {
         if (telegramChatId) telegramChatId.value = settings.telegram_chat_id || '';
         if (patrolTelegramNotify) patrolTelegramNotify.checked = settings.patrol_telegram_notify !== false;
         if (crowdTelegramNotify) crowdTelegramNotify.checked = settings.crowd_telegram_notify !== false;
+        if (liveAutoInterrupt) liveAutoInterrupt.checked = settings.live_auto_interrupt !== false;
 
         // Load patrol model options
         loadPatrolModelOptions(settings.patrol_model || '');
@@ -1151,6 +1153,7 @@ function collectPatrolSettings() {
     const telegramChatId = document.getElementById('telegram-chat-id');
     const patrolTelegramNotify = document.getElementById('patrol-telegram-notify');
     const crowdTelegramNotify = document.getElementById('crowd-telegram-notify');
+    const liveAutoInterrupt = document.getElementById('live-auto-interrupt');
 
     if (patrolModel) result.patrol_model = patrolModel.value;
     if (patrolSystemPrompt) result.patrol_system_prompt = patrolSystemPrompt.value;
@@ -1161,6 +1164,7 @@ function collectPatrolSettings() {
     if (telegramChatId) result.telegram_chat_id = telegramChatId.value;
     if (patrolTelegramNotify) result.patrol_telegram_notify = patrolTelegramNotify.checked;
     if (crowdTelegramNotify) result.crowd_telegram_notify = crowdTelegramNotify.checked;
+    if (liveAutoInterrupt) result.live_auto_interrupt = liveAutoInterrupt.checked;
 
     result.patrol_points = collectPatrolPoints();
 
