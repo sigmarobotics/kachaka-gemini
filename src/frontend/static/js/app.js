@@ -241,6 +241,20 @@ function handleMessage(msg) {
             addSystemMessage('巡檢已啟動');
             break;
 
+        case 'gemini_disconnected':
+            isConnected = false;
+            updateConnectionUI(false);
+            addSystemMessage('Gemini 連線已中斷，正在重新連接...');
+            stopPlayback();
+            hideWaveform();
+            // Auto-reconnect
+            setTimeout(connectWebSocket, 2000);
+            break;
+
+        case 'history_cleared':
+            // Server confirmed history clear
+            break;
+
         default:
             console.log('Unknown message type:', msg.type);
     }
@@ -429,12 +443,7 @@ async function pollStatus() {
         const res = await fetch('/api/state');
         if (res.ok) {
             const data = await res.json();
-            // Update battery
-            const batteryEl = document.getElementById('demo-battery');
-            if (batteryEl) {
-                batteryEl.textContent = `${data.battery || 0}%`;
-            }
-            // Also update header battery display
+            // Update header battery display
             const headerBattery = document.getElementById('battery-value');
             if (headerBattery) {
                 headerBattery.textContent = `${data.battery || 0}%`;
@@ -450,11 +459,7 @@ async function pollStatus() {
 
 // ─── Connection UI ───────────────────────────────────
 function updateConnectionUI(connected) {
-    const indicator = document.getElementById('demo-connection-status');
-    if (indicator) {
-        indicator.classList.toggle('connected', connected);
-    }
-    // Also update header Gemini status light
+    // Update header Gemini status light
     const geminiStatus = document.getElementById('gemini-status');
     if (geminiStatus) {
         geminiStatus.classList.toggle('connected', connected);

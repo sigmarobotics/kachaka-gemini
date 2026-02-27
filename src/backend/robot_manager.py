@@ -409,8 +409,10 @@ class RobotManager:
         dwell_time = settings_service.get("guide_dwell_time", 30)
         time.sleep(dwell_time)
         # Return home
-        self._ctrl.return_home()
-        return result
+        home_result = self._ctrl.return_home(timeout=120)
+        if not home_result.get("ok"):
+            return {"ok": False, "error": f"導覽完成但返回失敗: {home_result.get('error', '')}"}
+        return {"ok": True, "message": f"已完成 {matched['name']} 導覽並返回"}
 
     def _fc_start_patrol(self, args: dict) -> dict:
         from patrol_service import patrol_service
@@ -441,8 +443,15 @@ class RobotManager:
             return {"ok": False, "error": "location_name is required"}
         # Move to location first
         matched = self._resolve_location(location_name)
-        if matched and self._ctrl:
-            self._ctrl.move_to_location(matched["id"], timeout=120)
+        if not matched:
+            locations = self.get_locations()
+            return {"ok": False, "error": f"找不到地點: {location_name}",
+                    "available": [l["name"] for l in locations]}
+        if not self._ctrl:
+            return {"ok": False, "error": "Robot not connected"}
+        move_result = self._ctrl.move_to_location(matched["id"], timeout=120)
+        if not move_result.get("ok"):
+            return move_result
         # Capture and analyze
         from frame_hub import frame_hub
         jpeg = frame_hub.wait_for_fresh_frame(timeout=10)
@@ -470,7 +479,24 @@ class RobotManager:
                 ]),
             ],
         )
-        return {"ok": True, "analysis": response.text, "location": location_name}
+        analysis = response.text
+        # Telegram notification (if configured)
+        chat_id = settings_service.get("telegram_chat_id", "")
+        token = settings_service.get("telegram_bot_token", "")
+        crowd_notify = settings_service.get("crowd_notify_enabled", True)
+        if chat_id and token and crowd_notify:
+            try:
+                import urllib.request
+                tg_url = f"https://api.telegram.org/bot{token}/sendMessage"
+                tg_text = f"📊 人潮檢查 — {location_name}\n\n{analysis}"
+                payload = json.dumps({"chat_id": chat_id, "text": tg_text})
+                req = urllib.request.Request(tg_url, data=payload.encode(), headers={"Content-Type": "application/json"})
+                urllib.request.urlopen(req, timeout=10)
+            except Exception as e:
+                print(f"[check_crowd] Telegram notify failed: {e}")
+        # Return home
+        self._ctrl.return_home(timeout=120)
+        return {"ok": True, "analysis": analysis, "location": location_name}
 
     def _fc_notify_staff(self, args: dict) -> dict:
         message = args.get("message", "")
