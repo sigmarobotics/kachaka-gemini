@@ -2,6 +2,7 @@
 import state from './state.js';
 
 let mapImage = null;
+let mapDarkCanvas = null; // offscreen canvas with inverted map
 let mapCanvas = null;
 let mapCtx = null;
 let animFrameId = null;
@@ -22,20 +23,35 @@ export function initDemoStatus() {
     pollConnectionStatus();
 }
 
-async function loadMap() {
-    try {
-        const img = new Image();
-        img.onload = () => {
-            mapImage = img;
-            if (mapCanvas) {
-                mapCanvas.width = mapCanvas.parentElement?.clientWidth || 300;
-                mapCanvas.height = mapCanvas.parentElement?.clientHeight || 200;
-            }
-        };
-        img.src = '/api/map';
-    } catch (e) {
-        console.error('Failed to load map:', e);
-    }
+function loadMap() {
+    const img = new Image();
+    img.onload = () => {
+        mapImage = img;
+        // Pre-render inverted (dark theme) map into offscreen canvas
+        mapDarkCanvas = document.createElement('canvas');
+        mapDarkCanvas.width = img.width;
+        mapDarkCanvas.height = img.height;
+        const ctx = mapDarkCanvas.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+        const imageData = ctx.getImageData(0, 0, img.width, img.height);
+        const d = imageData.data;
+        for (let i = 0; i < d.length; i += 4) {
+            d[i]     = 255 - d[i];     // R
+            d[i + 1] = 255 - d[i + 1]; // G
+            d[i + 2] = 255 - d[i + 2]; // B
+        }
+        ctx.putImageData(imageData, 0, 0);
+
+        if (mapCanvas) {
+            mapCanvas.width = mapCanvas.parentElement?.clientWidth || 300;
+            mapCanvas.height = mapCanvas.parentElement?.clientHeight || 200;
+        }
+    };
+    img.onerror = () => {
+        console.warn('Map load failed, retrying in 3s...');
+        setTimeout(loadMap, 3000);
+    };
+    img.src = '/api/map?t=' + Date.now();
 }
 
 function renderLoop() {
@@ -48,25 +64,27 @@ function renderMap() {
     const w = mapCanvas.width;
     const h = mapCanvas.height;
 
-    mapCtx.clearRect(0, 0, w, h);
+    // Dark background
+    mapCtx.fillStyle = '#1a1a2e';
+    mapCtx.fillRect(0, 0, w, h);
 
-    if (!mapImage) {
-        mapCtx.fillStyle = '#f0f0f0';
-        mapCtx.fillRect(0, 0, w, h);
-        mapCtx.fillStyle = '#999';
+    if (!mapDarkCanvas) {
+        mapCtx.fillStyle = '#888';
         mapCtx.font = '14px system-ui';
         mapCtx.textAlign = 'center';
         mapCtx.fillText('地圖載入中...', w / 2, h / 2);
         return;
     }
 
-    // Draw map scaled to fit
-    const scale = Math.min(w / mapImage.width, h / mapImage.height);
-    const mw = mapImage.width * scale;
-    const mh = mapImage.height * scale;
+    // Draw inverted map from offscreen canvas
+    const srcW = mapDarkCanvas.width;
+    const srcH = mapDarkCanvas.height;
+    const scale = Math.min(w / srcW, h / srcH);
+    const mw = srcW * scale;
+    const mh = srcH * scale;
     const mx = (w - mw) / 2;
     const my = (h - mh) / 2;
-    mapCtx.drawImage(mapImage, mx, my, mw, mh);
+    mapCtx.drawImage(mapDarkCanvas, mx, my, mw, mh);
 
     // Draw robot position
     const info = state.mapInfo;

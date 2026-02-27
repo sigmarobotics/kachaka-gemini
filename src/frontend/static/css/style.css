@@ -1802,7 +1802,7 @@ input[type="number"]:focus {
     position: relative;
     flex: 0 0 35%;
     min-height: 140px;
-    background: var(--demo-card);
+    background: #1a1a2e;
     border-radius: var(--demo-radius);
     overflow: hidden;
     box-shadow: var(--demo-shadow);
