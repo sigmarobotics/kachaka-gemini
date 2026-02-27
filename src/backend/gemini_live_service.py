@@ -50,12 +50,8 @@ class GeminiLiveSession:
         robot_info = settings.get("robot_background_info", "")
         if robot_info:
             sections.append(f"[Robot Background Info]\n{robot_info}")
-        if settings.get("enable_interim_response", False):
-            sections.append(
-                "[Note]\n"
-                "當你要呼叫功能時，請不要先產生任何語音回覆，直接呼叫功能即可。"
-                "系統會自動播放過渡語音通知使用者。"
-            )
+        # Note: interim_response suppression removed — let the model speak
+        # naturally before/after function calls (guided by FC descriptions).
         system_prompt = "\n\n".join(sections)
         # Inject local time (UTC+8) into {{CURRENT_TIME}} placeholder
         utc8 = timezone(timedelta(hours=8))
@@ -130,6 +126,8 @@ class GeminiLiveSession:
             raw = await self.gemini_ws.recv()
             setup_response = json.loads(raw)
             print(f"Gemini setup response: {json.dumps(setup_response)[:200]}")
+            print(f"  model={model}, tools={len(func_decls)} FCs, voice={voice_name}")
+            print(f"  setup_config keys: {list(setup_config.keys())}")
 
         except Exception as e:
             print(f"Gemini connect/setup error: {e}")
@@ -163,6 +161,7 @@ class GeminiLiveSession:
     async def send_text(self, text: str):
         if not self.gemini_ws:
             return
+        print(f"[Live] Sending text: {text[:80]}")
         msg = {
             "clientContent": {
                 "turns": [{"role": "user", "parts": [{"text": text}]}],

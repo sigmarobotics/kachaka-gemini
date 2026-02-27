@@ -399,7 +399,7 @@ body::after {
 .map-container::before { top: 12px; left: 12px; border-right: none; border-bottom: none; }
 .map-container::after { bottom: 12px; right: 12px; border-left: none; border-top: none; }
 
-#map-canvas {
+#demo-map-canvas {
     max-width: 95%;
     max-height: 95%;
     border: 1px solid var(--border-medium);

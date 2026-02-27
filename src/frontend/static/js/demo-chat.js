@@ -1,5 +1,5 @@
 // demo-chat.js — Audio handling for demo page
-import { getWebSocket, getMode } from './demo-app.js';
+import { getWebSocket, getMode } from './app.js';
 
 const SAMPLE_RATE_INPUT = 16000;
 const SAMPLE_RATE_OUTPUT = 24000;
