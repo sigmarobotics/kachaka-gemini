@@ -72,11 +72,6 @@ async def index(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
 
-@app.get("/demo", response_class=HTMLResponse)
-async def demo_page(request: Request):
-    return templates.TemplateResponse("demo.html", {"request": request})
-
-
 @app.get("/demo/patrol", response_class=HTMLResponse)
 async def demo_patrol_page(request: Request):
     return templates.TemplateResponse("demo-patrol.html", {"request": request})
