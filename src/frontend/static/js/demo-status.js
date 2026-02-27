@@ -102,7 +102,7 @@ async function pollConnectionStatus() {
         const res = await fetch('/api/robot/status');
         if (res.ok) {
             const data = await res.json();
-            const indicator = document.getElementById('demo-connection-status');
+            const indicator = document.getElementById('connection-status');
             if (indicator) {
                 indicator.classList.toggle('connected', data.connected);
                 indicator.title = data.connected ? `Connected: ${data.ip}` : 'Disconnected';
