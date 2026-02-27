@@ -139,6 +139,19 @@ export async function loadSettings() {
         if (crowdTelegramNotify) crowdTelegramNotify.checked = settings.crowd_telegram_notify !== false;
         if (liveAutoInterrupt) liveAutoInterrupt.checked = settings.live_auto_interrupt !== false;
 
+        // Guide & patrol analysis settings
+        const guideDwellTime = document.getElementById('guide-dwell-time');
+        if (guideDwellTime) guideDwellTime.value = settings.guide_dwell_time || 30;
+
+        const patrolImagePrompt = document.getElementById('patrol-image-prompt');
+        if (patrolImagePrompt) patrolImagePrompt.value = settings.patrol_image_prompt || '';
+
+        const patrolVideoEnable = document.getElementById('patrol-video-enable');
+        if (patrolVideoEnable) patrolVideoEnable.checked = !!settings.patrol_video_enable;
+
+        const patrolVideoPrompt = document.getElementById('patrol-video-prompt');
+        if (patrolVideoPrompt) patrolVideoPrompt.value = settings.patrol_video_prompt || '';
+
         // Load patrol model options
         loadPatrolModelOptions(settings.patrol_model || '');
 
@@ -1169,6 +1182,19 @@ function collectPatrolSettings() {
     if (patrolTelegramNotify) result.patrol_telegram_notify = patrolTelegramNotify.checked;
     if (crowdTelegramNotify) result.crowd_telegram_notify = crowdTelegramNotify.checked;
     if (liveAutoInterrupt) result.live_auto_interrupt = liveAutoInterrupt.checked;
+
+    // Guide & patrol analysis settings
+    const guideDwellTime = document.getElementById('guide-dwell-time');
+    if (guideDwellTime) result.guide_dwell_time = parseInt(guideDwellTime.value) || 30;
+
+    const patrolImagePrompt = document.getElementById('patrol-image-prompt');
+    if (patrolImagePrompt) result.patrol_image_prompt = patrolImagePrompt.value;
+
+    const patrolVideoEnable = document.getElementById('patrol-video-enable');
+    if (patrolVideoEnable) result.patrol_video_enable = patrolVideoEnable.checked;
+
+    const patrolVideoPrompt = document.getElementById('patrol-video-prompt');
+    if (patrolVideoPrompt) result.patrol_video_prompt = patrolVideoPrompt.value;
 
     result.patrol_points = collectPatrolPoints();
 
