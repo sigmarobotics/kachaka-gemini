@@ -493,26 +493,22 @@ class RobotManager:
             return {"ok": False, "error": "Robot not connected"}
         shelf_id = settings_service.get("drink_shelf_id", "S01")
         shelf_home = settings_service.get("drink_shelf_home", "")
-        destination_name = args.get("destination", "")
-        if not destination_name:
-            return {"ok": False, "error": "destination is required"}
-        matched = self._resolve_location(destination_name)
-        if not matched:
-            locations = self.get_locations()
-            return {"ok": False, "error": f"找不到地點: {destination_name}",
-                    "available": [l["name"] for l in locations]}
-        # Move shelf to destination
-        result = self._ctrl.move_shelf(shelf_id, matched["id"], timeout=120)
+        destination_id = args.get("destination_id", "")
+        if not destination_id:
+            return {"ok": False, "error": "destination_id is required"}
+        # Move shelf to destination (destination_id is a location ID like L01)
+        result = self._ctrl.move_shelf(shelf_id, destination_id, timeout=120)
         if not result.get("ok"):
             return result
         # Dwell at destination
         dwell_time = settings_service.get("guide_dwell_time", 30)
         time.sleep(dwell_time)
         # Return shelf to its home
-        self._ctrl.return_shelf(shelf_id, timeout=60)
+        if shelf_home:
+            self._ctrl.return_shelf(shelf_id, timeout=60)
         # Return robot home
         self._ctrl.return_home()
-        return {"ok": True, "message": f"飲料已送達 {destination_name}"}
+        return {"ok": True, "message": f"飲料已送達 {destination_id}"}
 
     # ── Auto-connect on startup ───────────────────────────────────
 
