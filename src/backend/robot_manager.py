@@ -8,6 +8,7 @@ import base64
 import json
 import logging
 import threading
+import time
 
 from kachaka_core import KachakaConnection, RobotController, KachakaQueries, CameraStreamer
 
@@ -310,160 +311,208 @@ class RobotManager:
         Uses RobotController for movement commands (waits for completion,
         enriched errors, command_id verification).
         """
+        dispatch = {
+            "move_to_location": self._fc_move_to_location,
+            "move_shelf": self._fc_move_shelf,
+            "return_shelf": self._fc_return_shelf,
+            "get_robot_status": self._fc_get_robot_status,
+            "cancel_command": self._fc_cancel_command,
+            "capture_camera": self._fc_capture_camera,
+            "guide_to_booth": self._fc_guide_to_booth,
+            "start_patrol": self._fc_start_patrol,
+            "get_patrol_history": self._fc_get_patrol_history,
+            "check_crowd": self._fc_check_crowd,
+            "notify_staff": self._fc_notify_staff,
+            "deliver_drink": self._fc_deliver_drink,
+        }
+        handler = dispatch.get(name)
+        if not handler:
+            return {"ok": False, "error": f"Unknown function: {name}"}
         try:
-            if name == "move_to_location":
-                location_id = args.get("location_id", "")
-                if not location_id:
-                    return {"ok": False, "error": "location_id is required"}
-                if not self._ctrl:
-                    return {"ok": False, "error": "Robot not connected"}
-                return self._ctrl.move_to_location(location_id, timeout=120)
-
-            elif name == "move_shelf":
-                shelf_id = args.get("shelf_id", "")
-                destination_id = args.get("destination_id", "")
-                if not shelf_id or not destination_id:
-                    return {"ok": False, "error": "shelf_id and destination_id are required"}
-                if not self._ctrl:
-                    return {"ok": False, "error": "Robot not connected"}
-                return self._ctrl.move_shelf(shelf_id, destination_id, timeout=120)
-
-            elif name == "return_shelf":
-                shelf_id = args.get("shelf_id", "")
-                if not shelf_id:
-                    return {"ok": False, "error": "shelf_id is required"}
-                if not self._ctrl:
-                    return {"ok": False, "error": "Robot not connected"}
-                return self._ctrl.return_shelf(shelf_id, timeout=60)
-
-            elif name == "get_robot_status":
-                state = self.get_state()
-                cmd_state = self.get_command_state()
-                return {
-                    "ok": True,
-                    "battery": state["battery"],
-                    "pose": state["pose"],
-                    "command_state": cmd_state.get("state", "unknown"),
-                }
-
-            elif name == "cancel_command":
-                self.cancel_command()
-                return {"ok": True, "message": "Command cancelled"}
-
-            elif name == "capture_camera":
-                frame = self.get_camera_frame()
-                if frame and frame.get("ok"):
-                    return {"ok": True, "message": "Camera frame captured, image attached"}
-                return {"ok": False, "error": "Camera not available"}
-
-            elif name == "guide_to_booth":
-                location_name = args.get("location_name", "")
-                if not location_name:
-                    return {"ok": False, "error": "location_name is required"}
-                # Resolve location name to ID
-                locations = self.get_locations()
-                matched = None
-                for loc in locations:
-                    if location_name in loc["name"] or loc["name"] in location_name:
-                        matched = loc
-                        break
-                if not matched:
-                    return {"ok": False, "error": f"找不到地點: {location_name}",
-                            "available": [l["name"] for l in locations]}
-                if not self._ctrl:
-                    return {"ok": False, "error": "Robot not connected"}
-                return self._ctrl.move_to_location(matched["id"], timeout=120)
-
-            elif name == "start_patrol":
-                from patrol_service import patrol_service
-                result = patrol_service.start_patrol()
-                return result
-
-            elif name == "get_patrol_history":
-                import patrol_db
-                patrol_db.init_db()
-                count = args.get("count", 5)
-                try:
-                    count = int(count)
-                except (TypeError, ValueError):
-                    count = 5
-                runs = patrol_db.get_runs(limit=count)
-                summaries = []
-                for r in runs:
-                    summaries.append({
-                        "run_id": r["id"],
-                        "time": r["start_time"],
-                        "status": r["status"],
-                        "summary": (r.get("report_content") or "")[:200],
-                    })
-                return {"ok": True, "history": summaries}
-
-            elif name == "check_crowd":
-                location_name = args.get("location_name", "")
-                if not location_name:
-                    return {"ok": False, "error": "location_name is required"}
-                # Move to location first
-                locations = self.get_locations()
-                matched = None
-                for loc in locations:
-                    if location_name in loc["name"] or loc["name"] in location_name:
-                        matched = loc
-                        break
-                if matched and self._ctrl:
-                    self._ctrl.move_to_location(matched["id"], timeout=120)
-                # Capture and analyze
-                from frame_hub import frame_hub
-                jpeg = frame_hub.wait_for_fresh_frame(timeout=10)
-                if not jpeg:
-                    return {"ok": False, "error": "Camera not available"}
-                # Quick Gemini analysis for crowd
-                try:
-                    from google import genai
-                    from google.genai import types
-                    api_key = settings_service.get("gemini_api_key", "")
-                    model = settings_service.get("patrol_model", "") or settings_service.get("text_model", "gemini-2.0-flash")
-                    client = genai.Client(api_key=api_key)
-                    response = client.models.generate_content(
-                        model=model,
-                        contents=[
-                            types.Content(role="user", parts=[
-                                types.Part.from_text(
-                                    text=f"請分析這張照片中 {location_name} 的人潮狀況。"
-                                         "回答：大約人數、擁擠程度（空曠/適中/擁擠）、簡短描述。繁體中文。"
-                                ),
-                                types.Part.from_bytes(data=jpeg, mime_type="image/jpeg"),
-                            ]),
-                        ],
-                    )
-                    return {"ok": True, "analysis": response.text, "location": location_name}
-                except Exception as e:
-                    return {"ok": False, "error": f"Analysis failed: {e}"}
-
-            elif name == "notify_staff":
-                message = args.get("message", "")
-                if not message:
-                    return {"ok": False, "error": "message is required"}
-                # Send via Telegram
-                chat_id = settings_service.get("telegram_chat_id", "")
-                token = settings_service.get("telegram_bot_token", "")
-                if not chat_id or not token:
-                    return {"ok": False, "error": "Telegram not configured (missing chat_id or token)"}
-                try:
-                    import urllib.request
-                    import urllib.parse
-                    url = f"https://api.telegram.org/bot{token}/sendMessage"
-                    payload = json.dumps({"chat_id": chat_id, "text": message, "parse_mode": "Markdown"})
-                    req = urllib.request.Request(url, data=payload.encode(), headers={"Content-Type": "application/json"})
-                    urllib.request.urlopen(req, timeout=10)
-                    return {"ok": True, "message": "Notification sent to staff"}
-                except Exception as e:
-                    return {"ok": False, "error": f"Telegram send failed: {e}"}
-
-            else:
-                return {"ok": False, "error": f"Unknown function: {name}"}
-
+            return handler(args)
         except Exception as e:
             return {"ok": False, "error": str(e)}
+
+    # ── Helpers ────────────────────────────────────────────────────
+
+    def _resolve_location(self, name: str) -> dict | None:
+        """Resolve a location name to its dict. Returns None if not found."""
+        locations = self.get_locations()
+        for loc in locations:
+            if name in loc["name"] or loc["name"] in name:
+                return loc
+        return None
+
+    # ── FC handlers ────────────────────────────────────────────────
+
+    def _fc_move_to_location(self, args: dict) -> dict:
+        location_id = args.get("location_id", "")
+        if not location_id:
+            return {"ok": False, "error": "location_id is required"}
+        if not self._ctrl:
+            return {"ok": False, "error": "Robot not connected"}
+        return self._ctrl.move_to_location(location_id, timeout=120)
+
+    def _fc_move_shelf(self, args: dict) -> dict:
+        shelf_id = args.get("shelf_id", "")
+        destination_id = args.get("destination_id", "")
+        if not shelf_id or not destination_id:
+            return {"ok": False, "error": "shelf_id and destination_id are required"}
+        if not self._ctrl:
+            return {"ok": False, "error": "Robot not connected"}
+        return self._ctrl.move_shelf(shelf_id, destination_id, timeout=120)
+
+    def _fc_return_shelf(self, args: dict) -> dict:
+        shelf_id = args.get("shelf_id", "")
+        if not shelf_id:
+            return {"ok": False, "error": "shelf_id is required"}
+        if not self._ctrl:
+            return {"ok": False, "error": "Robot not connected"}
+        return self._ctrl.return_shelf(shelf_id, timeout=60)
+
+    def _fc_get_robot_status(self, args: dict) -> dict:
+        state = self.get_state()
+        cmd_state = self.get_command_state()
+        return {
+            "ok": True,
+            "battery": state["battery"],
+            "pose": state["pose"],
+            "command_state": cmd_state.get("state", "unknown"),
+        }
+
+    def _fc_cancel_command(self, args: dict) -> dict:
+        self.cancel_command()
+        return {"ok": True, "message": "Command cancelled"}
+
+    def _fc_capture_camera(self, args: dict) -> dict:
+        frame = self.get_camera_frame()
+        if frame and frame.get("ok"):
+            return {"ok": True, "message": "Camera frame captured, image attached"}
+        return {"ok": False, "error": "Camera not available"}
+
+    def _fc_guide_to_booth(self, args: dict) -> dict:
+        location_name = args.get("location_name", "")
+        if not location_name:
+            return {"ok": False, "error": "location_name is required"}
+        matched = self._resolve_location(location_name)
+        if not matched:
+            locations = self.get_locations()
+            return {"ok": False, "error": f"找不到地點: {location_name}",
+                    "available": [l["name"] for l in locations]}
+        if not self._ctrl:
+            return {"ok": False, "error": "Robot not connected"}
+        # Move to the booth
+        result = self._ctrl.move_to_location(matched["id"], timeout=120)
+        if not result.get("ok"):
+            return result
+        # Dwell at booth
+        dwell_time = settings_service.get("guide_dwell_time", 30)
+        time.sleep(dwell_time)
+        # Return home
+        self._ctrl.return_home()
+        return result
+
+    def _fc_start_patrol(self, args: dict) -> dict:
+        from patrol_service import patrol_service
+        return patrol_service.start_patrol()
+
+    def _fc_get_patrol_history(self, args: dict) -> dict:
+        import patrol_db
+        patrol_db.init_db()
+        count = args.get("count", 5)
+        try:
+            count = int(count)
+        except (TypeError, ValueError):
+            count = 5
+        runs = patrol_db.get_runs(limit=count)
+        summaries = []
+        for r in runs:
+            summaries.append({
+                "run_id": r["id"],
+                "time": r["start_time"],
+                "status": r["status"],
+                "summary": (r.get("report_content") or "")[:200],
+            })
+        return {"ok": True, "history": summaries}
+
+    def _fc_check_crowd(self, args: dict) -> dict:
+        location_name = args.get("location_name", "")
+        if not location_name:
+            return {"ok": False, "error": "location_name is required"}
+        # Move to location first
+        matched = self._resolve_location(location_name)
+        if matched and self._ctrl:
+            self._ctrl.move_to_location(matched["id"], timeout=120)
+        # Capture and analyze
+        from frame_hub import frame_hub
+        jpeg = frame_hub.wait_for_fresh_frame(timeout=10)
+        if not jpeg:
+            return {"ok": False, "error": "Camera not available"}
+        # Quick Gemini analysis for crowd
+        from google import genai
+        from google.genai import types
+        api_key = settings_service.get("gemini_api_key", "")
+        model = settings_service.get("patrol_model", "") or settings_service.get("text_model", "gemini-2.0-flash")
+        prompt = settings_service.get(
+            "patrol_image_prompt",
+            f"請分析這張照片中 {location_name} 的人潮狀況。"
+            "回答：大約人數、擁擠程度（空曠/適中/擁擠）、簡短描述。繁體中文。",
+        )
+        # Substitute location_name into prompt if it contains a placeholder
+        prompt = prompt.replace("{location_name}", location_name)
+        client = genai.Client(api_key=api_key)
+        response = client.models.generate_content(
+            model=model,
+            contents=[
+                types.Content(role="user", parts=[
+                    types.Part.from_text(text=prompt),
+                    types.Part.from_bytes(data=jpeg, mime_type="image/jpeg"),
+                ]),
+            ],
+        )
+        return {"ok": True, "analysis": response.text, "location": location_name}
+
+    def _fc_notify_staff(self, args: dict) -> dict:
+        message = args.get("message", "")
+        if not message:
+            return {"ok": False, "error": "message is required"}
+        # Send via Telegram
+        chat_id = settings_service.get("telegram_chat_id", "")
+        token = settings_service.get("telegram_bot_token", "")
+        if not chat_id or not token:
+            return {"ok": False, "error": "Telegram not configured (missing chat_id or token)"}
+        import urllib.request
+        url = f"https://api.telegram.org/bot{token}/sendMessage"
+        payload = json.dumps({"chat_id": chat_id, "text": message, "parse_mode": "Markdown"})
+        req = urllib.request.Request(url, data=payload.encode(), headers={"Content-Type": "application/json"})
+        urllib.request.urlopen(req, timeout=10)
+        return {"ok": True, "message": "Notification sent to staff"}
+
+    def _fc_deliver_drink(self, args: dict) -> dict:
+        if not self._ctrl:
+            return {"ok": False, "error": "Robot not connected"}
+        shelf_id = settings_service.get("drink_shelf_id", "S01")
+        shelf_home = settings_service.get("drink_shelf_home", "")
+        destination_name = args.get("destination", "")
+        if not destination_name:
+            return {"ok": False, "error": "destination is required"}
+        matched = self._resolve_location(destination_name)
+        if not matched:
+            locations = self.get_locations()
+            return {"ok": False, "error": f"找不到地點: {destination_name}",
+                    "available": [l["name"] for l in locations]}
+        # Move shelf to destination
+        result = self._ctrl.move_shelf(shelf_id, matched["id"], timeout=120)
+        if not result.get("ok"):
+            return result
+        # Dwell at destination
+        dwell_time = settings_service.get("guide_dwell_time", 30)
+        time.sleep(dwell_time)
+        # Return shelf to its home
+        self._ctrl.return_shelf(shelf_id, timeout=60)
+        # Return robot home
+        self._ctrl.return_home()
+        return {"ok": True, "message": f"飲料已送達 {destination_name}"}
 
     # ── Auto-connect on startup ───────────────────────────────────
 
