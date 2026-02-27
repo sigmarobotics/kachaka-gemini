@@ -44,6 +44,8 @@ DEFAULT_FUNCTION_DECLARATIONS = [
         "description": (
             "搬運層架指令。僅在用戶明確要求『送貨』、『搬東西』、『把 UBER 送過去』等物流需求時調用。"
             "必須同時具備層架 ID 與目標地點 ID。"
+            "呼叫前請先用語音告知用戶你即將執行（例如「好的，我馬上幫你送過來」），"
+            "收到結果後再告知用戶完成狀態。"
         ),
         "parameters": {
             "type": "object",
@@ -64,7 +66,10 @@ DEFAULT_FUNCTION_DECLARATIONS = [
     },
     {
         "name": "return_shelf",
-        "description": "層架歸位指令。僅在用戶要求『放回去』、『送回原位』時調用。",
+        "description": (
+            "層架歸位指令。僅在用戶要求『放回去』、『送回原位』時調用。"
+            "呼叫前請先告知用戶你正在歸位，收到結果後告知完成。"
+        ),
         "parameters": {
             "type": "object",
             "properties": {
@@ -100,7 +105,10 @@ DEFAULT_FUNCTION_DECLARATIONS = [
     },
     {
         "name": "guide_to_booth",
-        "description": "導覽帶位指令。當訪客要求『帶我去某攤位』、『我想看XXX』時使用。",
+        "description": (
+            "導覽帶位指令。當訪客要求『帶我去某攤位』、『我想看XXX』時使用。"
+            "呼叫前請先用語音告知用戶你即將帶路，收到結果後告知已到達。"
+        ),
         "parameters": {
             "type": "object",
             "properties": {
@@ -114,7 +122,10 @@ DEFAULT_FUNCTION_DECLARATIONS = [
     },
     {
         "name": "start_patrol",
-        "description": "啟動巡檢指令。當用戶要求『開始巡檢』、『去巡邏看看』時使用。",
+        "description": (
+            "啟動巡檢指令。當用戶要求『開始巡檢』、『去巡邏看看』時使用。"
+            "呼叫前請先告知用戶你即將開始巡檢，收到結果後告知巡檢狀態。"
+        ),
         "parameters": {"type": "object", "properties": {}},
     },
     {
@@ -132,7 +143,10 @@ DEFAULT_FUNCTION_DECLARATIONS = [
     },
     {
         "name": "check_crowd",
-        "description": "人潮檢查指令。當用戶問『那邊人多不多』、『看看攤位狀況』時使用。",
+        "description": (
+            "人潮檢查指令。當用戶問『那邊人多不多』、『看看攤位狀況』時使用。"
+            "呼叫前請先告知用戶你即將前往查看，收到結果後告知人潮狀況。"
+        ),
         "parameters": {
             "type": "object",
             "properties": {
@@ -158,6 +172,24 @@ DEFAULT_FUNCTION_DECLARATIONS = [
             "required": ["message"],
         },
     },
+    {
+        "name": "deliver_drink",
+        "description": (
+            "送飲料指令。當訪客要求『幫我送飲料』、『我要點飲料』時使用。"
+            "呼叫前請先告知用戶你即將派機器人去取飲料，收到結果後告知送達狀態。"
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "destination_id": {
+                    "type": "string",
+                    "description": "飲料送達目的地 ID",
+                    "enum": ["L01", "L02", "L03", "L04", "L05"],
+                }
+            },
+            "required": ["destination_id"],
+        },
+    },
 ]
 
 DEFAULT_INTERIM_PHRASES = {
@@ -172,6 +204,7 @@ DEFAULT_INTERIM_PHRASES = {
     "get_patrol_history": "正在查詢巡檢紀錄",
     "check_crowd": "正在前往查看人潮狀況",
     "notify_staff": "正在通知工作人員",
+    "deliver_drink": "好的，正在幫你送飲料",
 }
 
 DEFAULT_PERSONA = (
@@ -367,7 +400,11 @@ DEFAULT_SETTINGS = {
         {"label": "查看報告", "action": "show_history"},
     ],
     "drink_shelf_id": "S01",
-    "drink_shelf_home": "",        # location_id for drink shelf home position
+    "drink_shelf_home": "S01_home",
+    "guide_dwell_time": 30,
+    "patrol_image_prompt": "請分析這張照片中的環境狀況。回答：大約人數、擁擠程度、簡短描述。繁體中文。",
+    "patrol_video_enable": False,
+    "patrol_video_prompt": "請分析這段影片中的環境狀況。繁體中文。",
     "patrol_telegram_notify": True,
     "crowd_telegram_notify": True,
     "telegram_chat_id": "",        # Telegram chat_id for staff notifications
