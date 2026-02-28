@@ -58,7 +58,6 @@ export async function loadSettings() {
         const liveGoogleSearch = document.getElementById('setting-live-google-search');
         const shelfIdsInput = document.getElementById('setting-shelf-ids');
         const cameraToggle = document.getElementById('setting-camera-to-ai');
-        const robotIpDisplay = document.getElementById('setting-robot-ip');
         const interimToggle = document.getElementById('setting-enable-interim');
         const interimPhrasesInput = document.getElementById('setting-interim-phrases');
 
@@ -99,7 +98,8 @@ export async function loadSettings() {
         if (liveGoogleSearch) liveGoogleSearch.checked = settings.live_enable_google_search || false;
         if (shelfIdsInput) shelfIdsInput.value = (settings.shelf_ids || []).join(', ');
         if (cameraToggle) cameraToggle.checked = settings.enable_camera_to_ai || false;
-        if (robotIpDisplay) robotIpDisplay.textContent = settings.robot_ip || 'N/A';
+        const robotIpInput = document.getElementById('setting-robot-ip');
+        if (robotIpInput) robotIpInput.value = settings.robot_ip || '';
 
         // Robot background info
         const robotInfoInput = document.getElementById('setting-robot-info');
@@ -119,6 +119,47 @@ export async function loadSettings() {
 
         // Update interim audio status display
         updateInterimAudioStatus(settings.interim_audio_keys || []);
+
+        // Patrol settings
+        const patrolSystemPrompt = document.getElementById('patrol-system-prompt');
+        const videoAnalysisPrompt = document.getElementById('video-analysis-prompt');
+        const exhibitionTitle = document.getElementById('exhibition-title');
+        const drinkShelfId = document.getElementById('drink-shelf-id');
+        const telegramChatId = document.getElementById('telegram-chat-id');
+        const patrolTelegramNotify = document.getElementById('patrol-telegram-notify');
+        const crowdTelegramNotify = document.getElementById('crowd-telegram-notify');
+        const liveAutoInterrupt = document.getElementById('live-auto-interrupt');
+
+        if (patrolSystemPrompt) patrolSystemPrompt.value = settings.patrol_system_prompt || '';
+        if (videoAnalysisPrompt) videoAnalysisPrompt.value = settings.video_analysis_prompt || '';
+        if (exhibitionTitle) exhibitionTitle.value = settings.exhibition_title || '';
+        if (drinkShelfId) drinkShelfId.value = settings.drink_shelf_id || 'S01';
+        if (telegramChatId) telegramChatId.value = settings.telegram_chat_id || '';
+        if (patrolTelegramNotify) patrolTelegramNotify.checked = settings.patrol_telegram_notify !== false;
+        if (crowdTelegramNotify) crowdTelegramNotify.checked = settings.crowd_telegram_notify !== false;
+        if (liveAutoInterrupt) liveAutoInterrupt.checked = settings.live_auto_interrupt !== false;
+
+        // Guide & patrol analysis settings
+        const guideDwellTime = document.getElementById('guide-dwell-time');
+        if (guideDwellTime) guideDwellTime.value = settings.guide_dwell_time || 30;
+
+        const patrolImagePrompt = document.getElementById('patrol-image-prompt');
+        if (patrolImagePrompt) patrolImagePrompt.value = settings.patrol_image_prompt || '';
+
+        const patrolVideoEnable = document.getElementById('patrol-video-enable');
+        if (patrolVideoEnable) patrolVideoEnable.checked = !!settings.patrol_video_enable;
+
+        const patrolVideoPrompt = document.getElementById('patrol-video-prompt');
+        if (patrolVideoPrompt) patrolVideoPrompt.value = settings.patrol_video_prompt || '';
+
+        // Load patrol model options
+        loadPatrolModelOptions(settings.patrol_model || '');
+
+        // Load location options for drink shelf home
+        loadDrinkShelfHomeOptions(settings.drink_shelf_home || '');
+
+        // Load patrol points
+        renderPatrolPoints(settings.patrol_points || []);
 
         // Generation parameters — Text
         const textTemp = document.getElementById('setting-text-temperature');
@@ -145,6 +186,10 @@ export async function loadSettings() {
 
         // Load token usage
         await loadTokenUsage();
+
+        // Load profile list
+        await loadProfileList();
+        setupProfileButtons();
     } catch (e) {
         console.error('Failed to load settings:', e);
     }
@@ -224,6 +269,67 @@ async function queryModels(mode, selectId, btnId) {
     }
 }
 
+async function connectRobot() {
+    const ipInput = document.getElementById('setting-robot-ip');
+    const statusEl = document.getElementById('robot-connection-status');
+    const btn = document.getElementById('btn-robot-connect');
+    if (!ipInput || !btn) return;
+
+    const ip = ipInput.value.trim();
+    if (!ip) {
+        if (statusEl) { statusEl.textContent = 'Please enter an IP address'; statusEl.style.color = 'var(--danger)'; }
+        return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = 'Connecting...';
+    if (statusEl) { statusEl.textContent = 'Connecting...'; statusEl.style.color = 'var(--muted)'; }
+
+    try {
+        const res = await fetch('/api/robot/connect', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ip }),
+        });
+        const data = await res.json();
+        if (data.ok) {
+            if (statusEl) { statusEl.textContent = `Connected (serial: ${data.serial})`; statusEl.style.color = 'var(--mint)'; }
+        } else {
+            if (statusEl) { statusEl.textContent = `Failed: ${data.error}`; statusEl.style.color = 'var(--danger)'; }
+        }
+    } catch (e) {
+        if (statusEl) { statusEl.textContent = `Error: ${e.message}`; statusEl.style.color = 'var(--danger)'; }
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Connect';
+    }
+}
+
+async function disconnectRobot() {
+    const statusEl = document.getElementById('robot-connection-status');
+    try {
+        await fetch('/api/robot/disconnect', { method: 'POST' });
+        if (statusEl) { statusEl.textContent = 'Disconnected'; statusEl.style.color = 'var(--muted)'; }
+    } catch (e) {
+        if (statusEl) { statusEl.textContent = `Error: ${e.message}`; statusEl.style.color = 'var(--danger)'; }
+    }
+}
+
+async function loadRobotStatus() {
+    const statusEl = document.getElementById('robot-connection-status');
+    try {
+        const res = await fetch('/api/robot/status');
+        const data = await res.json();
+        if (data.connected) {
+            if (statusEl) { statusEl.textContent = `Connected to ${data.ip} (serial: ${data.serial})`; statusEl.style.color = 'var(--mint)'; }
+        } else {
+            if (statusEl) { statusEl.textContent = 'Not connected'; statusEl.style.color = 'var(--muted)'; }
+        }
+    } catch (e) {
+        // Silently fail — status will show on next poll
+    }
+}
+
 export function initSettings() {
     const saveBtn = document.getElementById('btn-save-settings');
     if (saveBtn) {
@@ -292,6 +398,15 @@ export function initSettings() {
     document.getElementById('btn-reset-tokens')
         ?.addEventListener('click', resetTokenUsage);
 
+    // Robot connection buttons
+    document.getElementById('btn-robot-connect')
+        ?.addEventListener('click', connectRobot);
+    document.getElementById('btn-robot-disconnect')
+        ?.addEventListener('click', disconnectRobot);
+
+    // Load robot connection status
+    loadRobotStatus();
+
     // Slider display updates
     for (const [sliderId, displayId] of [
         ['setting-text-temperature', 'text-temp-display'],
@@ -302,6 +417,12 @@ export function initSettings() {
         document.getElementById(sliderId)
             ?.addEventListener('input', () => updateParamDisplay(sliderId, displayId));
     }
+
+    // Patrol settings
+    document.getElementById('btn-query-patrol-models')
+        ?.addEventListener('click', () => queryModels('text', 'patrol-model', 'btn-query-patrol-models'));
+    document.getElementById('btn-add-patrol-point')
+        ?.addEventListener('click', addPatrolPoint);
 
     loadSettings();
 }
@@ -545,6 +666,11 @@ async function saveSettings() {
     if (cameraToggle) updates.enable_camera_to_ai = cameraToggle.checked;
     if (interimToggle) updates.enable_interim_response = interimToggle.checked;
 
+    const robotIpInput = document.getElementById('setting-robot-ip');
+    if (robotIpInput && robotIpInput.value.trim()) {
+        updates.robot_ip = robotIpInput.value.trim();
+    }
+
     const robotInfoInput = document.getElementById('setting-robot-info');
     if (robotInfoInput) updates.robot_background_info = robotInfoInput.value;
 
@@ -560,6 +686,9 @@ async function saveSettings() {
             return;
         }
     }
+
+    // Patrol & Exhibition settings
+    Object.assign(updates, collectPatrolSettings());
 
     // Generation params — Text
     const textTemp = document.getElementById('setting-text-temperature');
@@ -884,4 +1013,276 @@ async function generateInterimAudio() {
         btn.disabled = false;
         btn.textContent = 'Generate Audio with Live API';
     }
+}
+
+// ─── Patrol & Exhibition Settings ─────────────────────────────────────────────
+
+// Cached locations list (fetched once per page load)
+let _cachedLocations = null;
+
+async function fetchLocationsList() {
+    if (_cachedLocations) return _cachedLocations;
+    try {
+        const res = await fetch('/api/locations');
+        _cachedLocations = await res.json();
+    } catch (e) {
+        console.error('Failed to fetch locations:', e);
+        _cachedLocations = [];
+    }
+    return _cachedLocations;
+}
+
+async function loadPatrolModelOptions(selectedModel) {
+    const select = document.getElementById('patrol-model');
+    if (!select) return;
+
+    // Add empty option for "use text model"
+    if (!select.querySelector('option[value=""]')) {
+        const emptyOpt = document.createElement('option');
+        emptyOpt.value = '';
+        emptyOpt.textContent = '(使用 Text 模型)';
+        select.appendChild(emptyOpt);
+    }
+
+    // Ensure selected model is in the list
+    if (selectedModel && !select.querySelector(`option[value="${selectedModel}"]`)) {
+        const opt = document.createElement('option');
+        opt.value = selectedModel;
+        opt.textContent = selectedModel;
+        select.appendChild(opt);
+    }
+    select.value = selectedModel;
+}
+
+async function loadDrinkShelfHomeOptions(selectedLocation) {
+    const select = document.getElementById('drink-shelf-home');
+    if (!select) return;
+
+    const locations = await fetchLocationsList();
+    select.innerHTML = '<option value="">(未設定)</option>';
+    for (const loc of locations) {
+        const opt = document.createElement('option');
+        opt.value = loc.id;
+        opt.textContent = `${loc.name} (${loc.id})`;
+        select.appendChild(opt);
+    }
+
+    if (selectedLocation) {
+        select.value = selectedLocation;
+    }
+}
+
+function renderPatrolPoints(points) {
+    const container = document.getElementById('patrol-points-list');
+    if (!container) return;
+    container.innerHTML = '';
+
+    for (let i = 0; i < points.length; i++) {
+        const pt = points[i];
+        appendPatrolPointCard(container, pt, i);
+    }
+    window._patrolPointCounter = points.length;
+}
+
+function appendPatrolPointCard(container, pt, index) {
+    const card = document.createElement('div');
+    card.className = 'patrol-point-card';
+    card.dataset.index = index;
+    card.innerHTML = `
+        <div class="patrol-point-header">
+            <span class="patrol-point-label">巡檢點 #${index + 1}</span>
+            <button class="param-delete-btn" onclick="deletePatrolPoint(${index})" title="刪除">DEL</button>
+        </div>
+        <div class="form-group" style="margin-bottom: 6px;">
+            <label>地點</label>
+            <select class="patrol-point-location">
+                <option value="">Loading...</option>
+            </select>
+        </div>
+        <div class="form-group" style="margin-bottom: 6px;">
+            <label>分析提示 (選填)</label>
+            <textarea class="patrol-point-prompt" rows="2" placeholder="此點位的額外分析提示...">${escapeAttr(pt.prompt || '')}</textarea>
+        </div>
+    `;
+    container.appendChild(card);
+
+    // Populate location dropdown asynchronously
+    const locationSelect = card.querySelector('.patrol-point-location');
+    fetchLocationsList().then(locations => {
+        locationSelect.innerHTML = '';
+        for (const loc of locations) {
+            const opt = document.createElement('option');
+            opt.value = loc.id;
+            opt.textContent = `${loc.name} (${loc.id})`;
+            locationSelect.appendChild(opt);
+        }
+        // Set selected value
+        if (pt.location_id) {
+            locationSelect.value = pt.location_id;
+        }
+        // If name matches a location but no id was stored, try matching by name
+        if (!pt.location_id && pt.name) {
+            const match = locations.find(l => l.name === pt.name);
+            if (match) locationSelect.value = match.id;
+        }
+    });
+}
+
+function addPatrolPoint() {
+    const container = document.getElementById('patrol-points-list');
+    if (!container) return;
+    const index = window._patrolPointCounter || 0;
+    appendPatrolPointCard(container, {}, index);
+    window._patrolPointCounter = index + 1;
+}
+
+window.deletePatrolPoint = function(index) {
+    const card = document.querySelector(`.patrol-point-card[data-index="${index}"]`);
+    if (card) card.remove();
+};
+
+function collectPatrolPoints() {
+    const cards = document.querySelectorAll('.patrol-point-card');
+    const result = [];
+    cards.forEach(card => {
+        const locationSelect = card.querySelector('.patrol-point-location');
+        const promptTextarea = card.querySelector('.patrol-point-prompt');
+        const locationId = locationSelect?.value || '';
+        const selectedOption = locationSelect?.selectedOptions[0];
+        const name = selectedOption ? selectedOption.textContent.replace(/\s*\(.*\)$/, '') : '';
+        const prompt = promptTextarea?.value?.trim() || '';
+        if (locationId) {
+            result.push({ name, location_id: locationId, prompt });
+        }
+    });
+    return result;
+}
+
+function collectPatrolSettings() {
+    const result = {};
+
+    const patrolModel = document.getElementById('patrol-model');
+    const patrolSystemPrompt = document.getElementById('patrol-system-prompt');
+    const videoAnalysisPrompt = document.getElementById('video-analysis-prompt');
+    const exhibitionTitle = document.getElementById('exhibition-title');
+    const drinkShelfId = document.getElementById('drink-shelf-id');
+    const drinkShelfHome = document.getElementById('drink-shelf-home');
+    const telegramChatId = document.getElementById('telegram-chat-id');
+    const patrolTelegramNotify = document.getElementById('patrol-telegram-notify');
+    const crowdTelegramNotify = document.getElementById('crowd-telegram-notify');
+    const liveAutoInterrupt = document.getElementById('live-auto-interrupt');
+
+    if (patrolModel) result.patrol_model = patrolModel.value;
+    if (patrolSystemPrompt) result.patrol_system_prompt = patrolSystemPrompt.value;
+    if (videoAnalysisPrompt) result.video_analysis_prompt = videoAnalysisPrompt.value;
+    if (exhibitionTitle) result.exhibition_title = exhibitionTitle.value;
+    if (drinkShelfId) result.drink_shelf_id = drinkShelfId.value;
+    if (drinkShelfHome) result.drink_shelf_home = drinkShelfHome.value;
+    if (telegramChatId) result.telegram_chat_id = telegramChatId.value;
+    if (patrolTelegramNotify) result.patrol_telegram_notify = patrolTelegramNotify.checked;
+    if (crowdTelegramNotify) result.crowd_telegram_notify = crowdTelegramNotify.checked;
+    if (liveAutoInterrupt) result.live_auto_interrupt = liveAutoInterrupt.checked;
+
+    // Guide & patrol analysis settings
+    const guideDwellTime = document.getElementById('guide-dwell-time');
+    if (guideDwellTime) result.guide_dwell_time = parseInt(guideDwellTime.value) || 30;
+
+    const patrolImagePrompt = document.getElementById('patrol-image-prompt');
+    if (patrolImagePrompt) result.patrol_image_prompt = patrolImagePrompt.value;
+
+    const patrolVideoEnable = document.getElementById('patrol-video-enable');
+    if (patrolVideoEnable) result.patrol_video_enable = patrolVideoEnable.checked;
+
+    const patrolVideoPrompt = document.getElementById('patrol-video-prompt');
+    if (patrolVideoPrompt) result.patrol_video_prompt = patrolVideoPrompt.value;
+
+    result.patrol_points = collectPatrolPoints();
+
+    return result;
+}
+
+// ─── Profiles ────────────────────────────────────────────────────────────────
+
+async function loadProfileList() {
+    try {
+        const res = await fetch('/api/profiles');
+        if (!res.ok) return;
+        const names = await res.json();
+        const select = document.getElementById('profile-select');
+        if (!select) return;
+        const current = select.value;
+        select.innerHTML = '<option value="">-- Select Profile --</option>';
+        for (const name of names) {
+            const opt = document.createElement('option');
+            opt.value = name;
+            opt.textContent = name;
+            select.appendChild(opt);
+        }
+        if (current) select.value = current;
+    } catch (e) {
+        console.error('Failed to load profiles:', e);
+    }
+}
+
+function setupProfileButtons() {
+    const saveBtn = document.getElementById('btn-profile-save');
+    const loadBtn = document.getElementById('btn-profile-load');
+    const deleteBtn = document.getElementById('btn-profile-delete');
+
+    if (saveBtn) saveBtn.addEventListener('click', async () => {
+        const name = prompt('Profile name:');
+        if (!name || !name.trim()) return;
+        try {
+            const res = await fetch('/api/profiles', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: name.trim() }),
+            });
+            if (res.ok) {
+                alert(`Profile "${name.trim()}" saved.`);
+                await loadProfileList();
+                document.getElementById('profile-select').value = name.trim();
+            }
+        } catch (e) {
+            alert('Failed to save profile.');
+        }
+    });
+
+    if (loadBtn) loadBtn.addEventListener('click', async () => {
+        const select = document.getElementById('profile-select');
+        const name = select?.value;
+        if (!name) { alert('Select a profile first.'); return; }
+        if (!confirm(`Load profile "${name}"? This will overwrite current settings.`)) return;
+        try {
+            const res = await fetch('/api/profiles/load', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name }),
+            });
+            if (res.ok) {
+                alert(`Profile "${name}" loaded. Reloading page...`);
+                location.reload();
+            }
+        } catch (e) {
+            alert('Failed to load profile.');
+        }
+    });
+
+    if (deleteBtn) deleteBtn.addEventListener('click', async () => {
+        const select = document.getElementById('profile-select');
+        const name = select?.value;
+        if (!name) { alert('Select a profile first.'); return; }
+        if (!confirm(`Delete profile "${name}"?`)) return;
+        try {
+            const res = await fetch(`/api/profiles/${encodeURIComponent(name)}`, {
+                method: 'DELETE',
+            });
+            if (res.ok) {
+                alert(`Profile "${name}" deleted.`);
+                await loadProfileList();
+            }
+        } catch (e) {
+            alert('Failed to delete profile.');
+        }
+    });
 }

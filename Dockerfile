@@ -8,6 +8,9 @@ WORKDIR /app
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
+    git \
+    libglib2.0-0 \
+    fonts-wqy-zenhei \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first for better caching
@@ -20,8 +23,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY src/backend/ /app/
 COPY src/frontend/ /app/frontend/
 
-# Create data directory
-RUN mkdir -p /app/data
+# Create data and report directories
+RUN mkdir -p /app/data /app/data/report/images /app/data/report/video
 
 # Expose port
 EXPOSE 9000

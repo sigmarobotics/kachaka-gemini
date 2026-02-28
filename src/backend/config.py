@@ -1,5 +1,6 @@
 import os
 
+# Fallback robot IP from env var. Primary source is settings.json "robot_ip" field.
 ROBOT_IP = os.environ.get("ROBOT_IP", "192.168.50.133:26400")
 
 
@@ -43,6 +44,8 @@ DEFAULT_FUNCTION_DECLARATIONS = [
         "description": (
             "搬運層架指令。僅在用戶明確要求『送貨』、『搬東西』、『把 UBER 送過去』等物流需求時調用。"
             "必須同時具備層架 ID 與目標地點 ID。"
+            "呼叫前請先用語音告知用戶你即將執行（例如「好的，我馬上幫你送過來」），"
+            "收到結果後再告知用戶完成狀態。"
         ),
         "parameters": {
             "type": "object",
@@ -63,7 +66,10 @@ DEFAULT_FUNCTION_DECLARATIONS = [
     },
     {
         "name": "return_shelf",
-        "description": "層架歸位指令。僅在用戶要求『放回去』、『送回原位』時調用。",
+        "description": (
+            "層架歸位指令。僅在用戶要求『放回去』、『送回原位』時調用。"
+            "呼叫前請先告知用戶你正在歸位，收到結果後告知完成。"
+        ),
         "parameters": {
             "type": "object",
             "properties": {
@@ -97,6 +103,93 @@ DEFAULT_FUNCTION_DECLARATIONS = [
         ),
         "parameters": {"type": "object", "properties": {}},
     },
+    {
+        "name": "guide_to_booth",
+        "description": (
+            "導覽帶位指令。當訪客要求『帶我去某攤位』、『我想看XXX』時使用。"
+            "呼叫前請先用語音告知用戶你即將帶路，收到結果後告知已到達。"
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "location_name": {
+                    "type": "string",
+                    "description": "目標攤位或地點名稱",
+                }
+            },
+            "required": ["location_name"],
+        },
+    },
+    {
+        "name": "start_patrol",
+        "description": (
+            "啟動巡檢指令。當用戶要求『開始巡檢』、『去巡邏看看』時使用。"
+            "呼叫前請先告知用戶你即將開始巡檢，收到結果後告知巡檢狀態。"
+        ),
+        "parameters": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "get_patrol_history",
+        "description": "查詢巡檢歷史。當用戶詢問『上次巡檢結果』、『巡檢紀錄』時使用。",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "count": {
+                    "type": "integer",
+                    "description": "查詢最近幾筆紀錄（預設 5）",
+                }
+            },
+        },
+    },
+    {
+        "name": "check_crowd",
+        "description": (
+            "人潮檢查指令。當用戶問『那邊人多不多』、『看看攤位狀況』時使用。"
+            "呼叫前請先告知用戶你即將前往查看，收到結果後告知人潮狀況。"
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "location_name": {
+                    "type": "string",
+                    "description": "要檢查的地點名稱",
+                }
+            },
+            "required": ["location_name"],
+        },
+    },
+    {
+        "name": "notify_staff",
+        "description": "通知工作人員。當需要推送訊息給工作人員時使用。",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "type": "string",
+                    "description": "要通知的訊息內容",
+                }
+            },
+            "required": ["message"],
+        },
+    },
+    {
+        "name": "deliver_drink",
+        "description": (
+            "送飲料指令。當訪客要求『幫我送飲料』、『我要點飲料』時使用。"
+            "呼叫前請先告知用戶你即將派機器人去取飲料，收到結果後告知送達狀態。"
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "destination_id": {
+                    "type": "string",
+                    "description": "飲料送達目的地 ID",
+                    "enum": ["L01", "L02", "L03", "L04", "L05"],
+                }
+            },
+            "required": ["destination_id"],
+        },
+    },
 ]
 
 DEFAULT_INTERIM_PHRASES = {
@@ -106,6 +199,12 @@ DEFAULT_INTERIM_PHRASES = {
     "get_robot_status": "正在查詢機器人狀態",
     "cancel_command": "正在取消目前的指令",
     "capture_camera": "正在擷取相機畫面",
+    "guide_to_booth": "好的，正在帶你過去",
+    "start_patrol": "好的，正在啟動巡檢",
+    "get_patrol_history": "正在查詢巡檢紀錄",
+    "check_crowd": "正在前往查看人潮狀況",
+    "notify_staff": "正在通知工作人員",
+    "deliver_drink": "好的，正在幫你送飲料",
 }
 
 DEFAULT_PERSONA = (
@@ -286,5 +385,27 @@ DEFAULT_SETTINGS = {
     "enable_interim_response": False,
     "interim_phrases": DEFAULT_INTERIM_PHRASES,
     "interim_audio": {},
+    "live_auto_interrupt": True,    # True = auto VAD, False = manual interrupt button
     "robot_ip": ROBOT_IP,
+    # Exhibition / Patrol settings
+    "patrol_points": [],           # list of {name, location_id, prompt}
+    "patrol_model": "",            # empty = use text_model
+    "patrol_system_prompt": "你是一個巡檢機器人，使用一般標準進行檢查就好，不用太嚴格",
+    "video_analysis_prompt": "請分析這段巡檢影片，描述觀察到的環境狀況、異常事項及建議。使用繁體中文。",
+    "exhibition_title": "AI 機器人互動展示",
+    "exhibition_quick_actions": [
+        {"label": "導覽", "command": "帶我去參觀"},
+        {"label": "送飲料", "command": "幫我送飲料"},
+        {"label": "開始巡檢", "command": "開始巡檢"},
+        {"label": "查看報告", "action": "show_history"},
+    ],
+    "drink_shelf_id": "S01",
+    "drink_shelf_home": "S01_home",
+    "guide_dwell_time": 30,
+    "patrol_image_prompt": "請分析這張照片中的環境狀況。回答：大約人數、擁擠程度、簡短描述。繁體中文。",
+    "patrol_video_enable": False,
+    "patrol_video_prompt": "請分析這段影片中的環境狀況。繁體中文。",
+    "patrol_telegram_notify": True,
+    "crowd_telegram_notify": True,
+    "telegram_chat_id": "",        # Telegram chat_id for staff notifications
 }

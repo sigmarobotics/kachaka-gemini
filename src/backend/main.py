@@ -7,19 +7,23 @@ import urllib.request
 import urllib.error
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
 import websockets
 
-from robot_service import robot_service
+from robot_manager import robot_manager
 import settings_service
+import profile_service
 import token_service
-from config import DEFAULT_SETTINGS
+from config import DEFAULT_SETTINGS, DATA_DIR
 from gemini_live_service import GeminiLiveSession, GEMINI_WS_URL
 from gemini_text_service import GeminiTextSession
 from telegram_service import telegram_manager
+import patrol_db
+from patrol_service import patrol_service
+from report_service import report_service
 
 # Paths - support both local dev and Docker
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -37,7 +41,16 @@ templates = Jinja2Templates(directory=TEMPLATE_DIR)
 
 
 @app.on_event("startup")
+async def ensure_directories():
+    os.makedirs(os.path.join(DATA_DIR, "report", "images"), exist_ok=True)
+    os.makedirs(os.path.join(DATA_DIR, "report", "video"), exist_ok=True)
+
+
+@app.on_event("startup")
 async def startup_event():
+    # Auto-connect to robot from saved settings (in thread to avoid blocking event loop)
+    await asyncio.to_thread(robot_manager.auto_connect)
+    # Start Telegram bot
     token = settings_service.get("telegram_bot_token", "")
     if token:
         try:
@@ -49,6 +62,7 @@ async def startup_event():
 @app.on_event("shutdown")
 async def shutdown_event():
     await telegram_manager.stop()
+    await asyncio.to_thread(robot_manager.disconnect)
 
 
 # ─── Pages ────────────────────────────────────────────────────────────────────
@@ -58,16 +72,21 @@ async def index(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
 
+@app.get("/demo/patrol", response_class=HTMLResponse)
+async def demo_patrol_page(request: Request):
+    return templates.TemplateResponse("demo-patrol.html", {"request": request})
+
+
 # ─── Robot REST endpoints ─────────────────────────────────────────────────────
 
 @app.get("/api/state")
 async def get_state():
-    return robot_service.get_state()
+    return robot_manager.get_state()
 
 
 @app.get("/api/map")
 async def get_map():
-    data = robot_service.get_map_bytes()
+    data = robot_manager.get_map_bytes()
     if data:
         return Response(content=data, media_type="image/png")
     return Response(status_code=404)
@@ -79,12 +98,12 @@ async def camera_front():
     async def generate():
         try:
             while True:
-                img = robot_service.get_front_camera_image()
-                if img and hasattr(img, "data") and img.data:
+                jpeg_bytes = robot_manager.get_camera_jpeg_bytes()
+                if jpeg_bytes:
                     yield (
                         b"--frame\r\n"
                         b"Content-Type: image/jpeg\r\n\r\n"
-                        + img.data
+                        + jpeg_bytes
                         + b"\r\n"
                     )
                 await asyncio.sleep(0.1)
@@ -99,12 +118,12 @@ async def camera_front():
 
 @app.get("/api/locations")
 async def get_locations():
-    return robot_service.get_locations()
+    return robot_manager.get_locations()
 
 
 @app.get("/api/shelves")
 async def get_shelves():
-    return robot_service.get_shelves()
+    return robot_manager.get_shelves()
 
 
 @app.get("/api/settings")
@@ -165,6 +184,44 @@ async def save_settings(request: Request):
             except Exception as e:
                 print(f"[Telegram] Failed to start bot: {e}")
     return {"status": "ok", "settings": updated}
+
+
+# ─── Profile endpoints ────────────────────────────────────────────────────────
+
+@app.get("/api/profiles")
+async def list_profiles():
+    return profile_service.list_profiles()
+
+
+@app.post("/api/profiles")
+async def save_profile(request: Request):
+    body = await request.json()
+    name = body.get("name", "").strip()
+    if not name:
+        return JSONResponse({"error": "name is required"}, status_code=400)
+    settings = settings_service.get_all()
+    profile_service.save_profile(name, settings)
+    return {"ok": True, "name": name}
+
+
+@app.post("/api/profiles/load")
+async def load_profile(request: Request):
+    body = await request.json()
+    name = body.get("name", "").strip()
+    if not name:
+        return JSONResponse({"error": "name is required"}, status_code=400)
+    profile = profile_service.load_profile(name)
+    if profile is None:
+        return JSONResponse({"error": "profile not found"}, status_code=404)
+    settings_service.save(profile)
+    return {"ok": True, "name": name}
+
+
+@app.delete("/api/profiles/{name}")
+async def delete_profile(name: str):
+    if profile_service.delete_profile(name):
+        return {"ok": True}
+    return JSONResponse({"error": "profile not found"}, status_code=404)
 
 
 @app.get("/api/token_usage")
@@ -322,19 +379,19 @@ async def move_robot(request: Request):
     x = body.get("x", 0)
     y = body.get("y", 0)
     theta = body.get("theta", 0)
-    robot_service.move_to(x, y, theta, wait=False)
+    robot_manager.move_to_pose(x, y, theta)
     return {"status": "ok"}
 
 
 @app.post("/api/cancel_command")
 async def cancel_command():
-    robot_service.cancel_command()
+    robot_manager.cancel_command()
     return {"status": "ok"}
 
 
 @app.post("/api/return_home")
 async def return_home():
-    robot_service.return_home()
+    robot_manager.return_home()
     return {"status": "ok"}
 
 
@@ -343,14 +400,131 @@ async def manual_control(request: Request):
     body = await request.json()
     direction = body.get("direction", "")
     if direction == "forward":
-        robot_service.move_forward(0.1)
+        robot_manager.move_forward(0.1)
     elif direction == "backward":
-        robot_service.move_forward(-0.1)
+        robot_manager.move_forward(-0.1)
     elif direction == "left":
-        robot_service.rotate(math.radians(10))
+        robot_manager.rotate(math.radians(10))
     elif direction == "right":
-        robot_service.rotate(math.radians(-10))
+        robot_manager.rotate(math.radians(-10))
     return {"status": "ok"}
+
+
+# ─── Robot connection management ─────────────────────────────────────────────
+
+@app.post("/api/robot/connect")
+async def robot_connect(request: Request):
+    body = await request.json()
+    ip = body.get("ip", "").strip()
+    if not ip:
+        return JSONResponse({"ok": False, "error": "IP address is required"}, status_code=400)
+    result = await asyncio.to_thread(robot_manager.connect, ip)
+    return result
+
+
+@app.post("/api/robot/disconnect")
+async def robot_disconnect():
+    result = await asyncio.to_thread(robot_manager.disconnect)
+    return result
+
+
+@app.get("/api/robot/status")
+async def robot_status():
+    return robot_manager.get_connection_status()
+
+
+# ─── Patrol API ──────────────────────────────────────────────────────────────
+
+@app.on_event("startup")
+async def init_patrol_db():
+    patrol_db.init_db()
+
+
+@app.get("/api/patrol/status")
+async def patrol_status():
+    return patrol_service.get_status()
+
+
+@app.post("/api/patrol/start")
+async def start_patrol(request: Request):
+    body = await request.json() if request.headers.get("content-type") == "application/json" else {}
+    points = body.get("points", None)
+    result = await asyncio.to_thread(patrol_service.start_patrol, points)
+    return result
+
+
+@app.post("/api/patrol/cancel")
+async def cancel_patrol():
+    patrol_service.cancel_patrol()
+    return {"ok": True}
+
+
+@app.get("/api/patrol/runs")
+async def get_patrol_runs(limit: int = 20, offset: int = 0):
+    runs = patrol_db.get_runs(limit=limit, offset=offset)
+    return {"runs": runs, "total": patrol_db.get_run_count()}
+
+
+@app.get("/api/patrol/runs/{run_id}")
+async def get_patrol_run(run_id: int):
+    run = patrol_db.get_run(run_id)
+    if not run:
+        return JSONResponse({"error": "Run not found"}, status_code=404)
+    inspections = patrol_db.get_inspections(run_id)
+    return {"run": run, "inspections": inspections}
+
+
+@app.get("/api/patrol/runs/{run_id}/pdf")
+async def get_patrol_pdf(run_id: int):
+    pdf_bytes = await asyncio.to_thread(report_service.generate_patrol_pdf, run_id)
+    if not pdf_bytes:
+        return JSONResponse({"error": "Failed to generate PDF"}, status_code=500)
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename=patrol_report_{run_id}.pdf"},
+    )
+
+
+@app.get("/api/patrol/report/image/{filepath:path}")
+async def get_patrol_image(filepath: str):
+    """Serve patrol inspection images (supports subdirectory paths)."""
+    # Resolve and verify the path stays within IMAGE_DIR
+    base = os.path.realpath(os.path.join(DATA_DIR, "report", "images"))
+    image_path = os.path.realpath(os.path.join(base, filepath))
+    if not image_path.startswith(base) or not os.path.isfile(image_path):
+        return Response(status_code=404)
+    with open(image_path, "rb") as f:
+        return Response(content=f.read(), media_type="image/jpeg")
+
+
+@app.get("/api/patrol/report/video/{filename}")
+async def get_patrol_video(filename: str):
+    """Serve patrol video recordings."""
+    base = os.path.realpath(os.path.join(DATA_DIR, "report", "video"))
+    video_path = os.path.realpath(os.path.join(base, filename))
+    if not video_path.startswith(base) or not os.path.isfile(video_path):
+        return Response(status_code=404)
+    return FileResponse(video_path, media_type="video/mp4")
+
+
+@app.get("/api/patrol/token_stats")
+async def get_patrol_token_stats():
+    return patrol_db.get_daily_token_stats()
+
+
+@app.post("/api/patrol/analyze")
+async def generate_analysis_report(request: Request):
+    body = await request.json()
+    start_date = body.get("start_date", "")
+    end_date = body.get("end_date", "")
+    prompt = body.get("prompt", "")
+    if not start_date or not end_date:
+        return JSONResponse({"error": "start_date and end_date required"}, status_code=400)
+    result = await asyncio.to_thread(
+        report_service.generate_analysis_report, start_date, end_date, prompt
+    )
+    return result
 
 
 # ─── WebSocket: Gemini Live API proxy ─────────────────────────────────────────
@@ -421,6 +595,13 @@ async def ws_chat(websocket: WebSocket):
                     except Exception:
                         pass
 
+            elif msg_type == "interrupt":
+                if session and hasattr(session, 'send_interrupt'):
+                    try:
+                        await session.send_interrupt()
+                    except Exception:
+                        pass
+
             elif msg_type == "clear_history":
                 if session and hasattr(session, 'clear_history'):
                     await session.clear_history()
@@ -428,6 +609,10 @@ async def ws_chat(websocket: WebSocket):
                     "type": "history_cleared",
                     "message": "Chat history cleared",
                 })
+
+            elif msg_type == "start_patrol":
+                result = await asyncio.to_thread(patrol_service.start_patrol)
+                await websocket.send_json({"type": "patrol_started", **result})
 
     except WebSocketDisconnect:
         pass

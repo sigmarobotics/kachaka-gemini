@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-TW">
 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Kachaka + Gemini Live</title>
+    <title>Kachaka Live</title>
     <link rel="stylesheet" href="/static/css/style.css">
     <link rel="icon" type="image/png" href="/static/favicon.png">
 </head>
@@ -14,15 +14,23 @@
         <!-- ═══ HEADER ═══ -->
         <header class="glass-header">
             <div class="logo">
-                <img src="/static/favicon.png" alt="logo" class="logo-icon">Kachaka Live
+                <img src="/static/favicon.png" alt="logo" class="logo-icon"><span id="demo-title">Kachaka Live</span>
             </div>
 
             <div class="tabs">
-                <button class="tab-btn active" data-tab="chat" onclick="switchTab('chat')">Chat</button>
+                <button class="tab-btn active" data-tab="demo" onclick="switchTab('demo')">Demo</button>
                 <button class="tab-btn" data-tab="settings" onclick="switchTab('settings')">Settings</button>
             </div>
 
             <div class="status-bar">
+                <!-- Mode toggle -->
+                <label class="mode-toggle" title="切換文字/語音模式">
+                    <input type="checkbox" id="mode-toggle">
+                    <span class="mode-toggle-slider"></span>
+                    <span class="mode-toggle-label mode-label-text">文字</span>
+                    <span class="mode-toggle-label mode-label-live">語音</span>
+                </label>
+
                 <span class="status-item">
                     <span class="label">Battery</span>
                     <span class="value" id="battery-value">--%</span>
@@ -41,71 +49,87 @@
         <!-- ═══ MAIN CONTENT ═══ -->
         <main class="main-content">
 
-            <!-- ═══ CHAT VIEW ═══ -->
-            <div id="view-chat" class="tab-content no-padding">
-                <div class="split-view">
-                    <!-- LEFT: CAMERA + MAP -->
-                    <div class="left-panel chat-map-panel">
-                        <div class="monitor-frame collapsible" id="front-camera-frame">
-                            <div class="frame-header" onclick="this.closest('.monitor-frame').classList.toggle('collapsed')">
-                                <h4>Front Camera <span class="toggle-icon">&#9660;</span></h4>
+            <!-- ═══ DEMO VIEW ═══ -->
+            <div id="view-demo" class="tab-content">
+                <div class="demo-container" style="height: 100%; display: flex; flex-direction: column;">
+                    <!-- Split view: camera+map left, chat right -->
+                    <main class="split-view" style="flex: 1; min-height: 0;">
+                        <!-- LEFT: Camera + Map -->
+                        <div class="camera-panel">
+                            <div class="camera-feed">
+                                <img id="demo-camera-img" src="/api/camera/front" alt="機器人前置鏡頭">
+                                <div class="camera-label">即時影像</div>
                             </div>
-                            <div class="frame-content">
-                                <img id="front-camera-img" src="/api/camera/front" alt="Front Camera"
-                                    style="width: 100%; display: block;" />
-                            </div>
-                        </div>
-                        <div class="map-container" id="map-container">
-                            <div class="loading-overlay" id="map-loading">
-                                <div class="spinner"></div>
-                                <p>Initializing Map</p>
-                            </div>
-                            <canvas id="map-canvas"></canvas>
-                        </div>
-                        <div class="controls-panel compact">
-                            <div class="info-text">
-                                <p>Click to Move &bull; Drag to Set Pose</p>
-                                <p id="pose-display">X: -- Y: -- T: --</p>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- RIGHT: CHAT -->
-                    <div class="right-panel chat-panel">
-                        <div class="chat-header">
-                            <h2>Gemini Live Chat</h2>
-                            <div class="chat-header-right">
-                                <span class="session-tokens" id="session-tokens" title="Session token usage">Tokens: 0</span>
-                                <button id="btn-clear-chat" class="btn-chat-action" title="Clear History" disabled>Clear</button>
-                                <button id="btn-export-chat" class="btn-chat-action" title="Export Conversation">Export</button>
-                                <button id="btn-connect" class="btn-connect">Connect</button>
+                            <div class="map-mini">
+                                <canvas id="demo-map-canvas"></canvas>
+                                <div class="map-label">地圖</div>
                             </div>
                         </div>
 
-                        <div id="chat-messages" class="chat-messages">
-                            <div class="chat-message system">
-                                Click "Connect" to start a conversation with the AI assistant.
+                        <!-- RIGHT: Chat -->
+                        <div class="chat-panel">
+                            <!-- Dev toolbar (compact) -->
+                            <div class="chat-header">
+                                <h2>Gemini Live Chat</h2>
+                                <div class="chat-header-right">
+                                    <span class="session-tokens" id="session-tokens" title="Session token usage">Tokens: 0</span>
+                                    <button id="btn-clear-chat" class="btn-chat-action" title="Clear History">Clear</button>
+                                    <button id="btn-export-chat" class="btn-chat-action" title="Export Conversation">Export</button>
+                                </div>
+                            </div>
+
+                            <div id="demo-chat-messages" class="chat-messages">
+                                <div class="chat-bubble system">
+                                    歡迎！我是您的智慧導覽助手，請問有什麼可以幫您的嗎？
+                                </div>
+                            </div>
+
+                            <div class="chat-input-bar">
+                                <input type="text" id="demo-chat-input" placeholder="輸入訊息..." autocomplete="off">
+                                <button id="btn-demo-send" class="btn-demo-send" title="發送">
+                                    <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor">
+                                        <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+                                    </svg>
+                                </button>
+                                <button id="btn-demo-mic" class="btn-demo-mic" title="語音輸入" style="display: none;">
+                                    <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor">
+                                        <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
+                                        <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
+                                    </svg>
+                                </button>
+                                <button id="btn-demo-connect" style="display: none;"></button>
                             </div>
                         </div>
+                    </main>
 
-                        <div class="chat-input-bar">
-                            <input type="text" id="chat-input" placeholder="Type a message..." disabled>
-                            <button id="btn-send" class="btn-send" disabled>Send</button>
-                            <button id="btn-mic" class="btn-mic" disabled>Mic</button>
+                    <!-- Quick Actions -->
+                    <section class="quick-actions" id="demo-quick-actions">
+                        <!-- Populated by JS -->
+                    </section>
+
+                    <!-- Patrol Results Panel -->
+                    <section class="patrol-panel" id="demo-patrol-panel">
+                        <div class="patrol-panel-header" id="demo-patrol-toggle">
+                            <span class="patrol-panel-title">巡檢結果 / 歷史紀錄</span>
+                            <span class="patrol-toggle-icon">&#9660;</span>
                         </div>
-                    </div>
+                        <div class="patrol-panel-body">
+                            <div id="demo-patrol-list" class="patrol-list">
+                                <div class="patrol-empty">尚無巡檢紀錄</div>
+                            </div>
+                        </div>
+                    </section>
                 </div>
             </div>
 
             <!-- ═══ SETTINGS VIEW ═══ -->
             <div id="view-settings" class="tab-content" style="display: none;">
-                <div class="header" style="width: 100%; max-width: 800px; margin: 0 auto;">
-                    <h1>Settings</h1>
-                </div>
 
                 <!-- Settings Sub-Tabs -->
-                <div class="settings-tabs" style="width: 100%; max-width: 800px; margin: 0 auto;">
+                <div class="settings-tabs">
                     <button class="settings-tab-btn active" data-settings-tab="general">General</button>
+                    <button class="settings-tab-btn" data-settings-tab="prompt">Prompt</button>
+                    <button class="settings-tab-btn" data-settings-tab="functions">Functions</button>
                     <button class="settings-tab-btn" data-settings-tab="text-api">Text API</button>
                     <button class="settings-tab-btn" data-settings-tab="live-api">Live API</button>
                 </div>
@@ -115,6 +139,16 @@
                     <!-- ═══ GENERAL TAB ═══ -->
                     <div class="settings-pane" id="settings-pane-general">
                         <div class="settings-column">
+                            <h3 class="settings-section-title">Profiles</h3>
+                            <div class="form-group" style="flex-direction: row; align-items: center; gap: 12px; flex-wrap: wrap;">
+                                <select id="profile-select" style="flex: 1; min-width: 150px;">
+                                    <option value="">-- Select Profile --</option>
+                                </select>
+                                <button id="btn-profile-save" class="btn-primary" style="padding: 6px 14px; font-size: 12px;">Save</button>
+                                <button id="btn-profile-load" class="btn-primary" style="padding: 6px 14px; font-size: 12px;">Load</button>
+                                <button id="btn-profile-delete" class="btn-danger" style="padding: 6px 14px; font-size: 12px;">Delete</button>
+                            </div>
+
                             <h3 class="settings-section-title">Gemini Configuration</h3>
 
                             <div class="form-group">
@@ -133,84 +167,42 @@
                                 </select>
                             </div>
                             <div class="form-group">
-                                <label>Robot IP (from environment)</label>
-                                <span id="setting-robot-ip" class="setting-display-value">N/A</span>
+                                <label>Robot IP</label>
+                                <div style="display: flex; gap: 8px; align-items: center;">
+                                    <input type="text" id="setting-robot-ip" placeholder="192.168.x.x:26400" style="flex: 1;">
+                                    <button id="btn-robot-connect" class="btn-sm" style="white-space: nowrap;">Connect</button>
+                                    <button id="btn-robot-disconnect" class="btn-sm btn-danger" style="white-space: nowrap;">Disconnect</button>
+                                </div>
+                                <small id="robot-connection-status" style="margin-top: 4px; display: block; color: var(--muted);">Not connected</small>
                             </div>
                             <div class="form-group">
                                 <label>Shelf IDs (comma separated)</label>
                                 <input type="text" id="setting-shelf-ids" placeholder="shelf_1, shelf_2">
                             </div>
 
-                            <h3 class="settings-section-title">System Instruction</h3>
-                            <p class="settings-hint">Click section headers to expand/collapse. Connect 時依序注入所有區塊。</p>
-                            <div id="system-instruction-accordion" class="accordion">
-                                <div class="accordion-item" data-section="persona">
-                                    <div class="accordion-header" onclick="this.parentElement.classList.toggle('open')">
-                                        <span class="accordion-title">Persona — AI 助手的角色與語氣</span>
-                                        <span class="accordion-arrow">&#9660;</span>
-                                    </div>
-                                    <div class="accordion-body">
-                                        <textarea id="setting-persona" rows="6" placeholder="定義 AI 助手的角色、語氣、回答語言..."></textarea>
-                                    </div>
-                                </div>
-                                <div class="accordion-item" data-section="static_knowledge">
-                                    <div class="accordion-header" onclick="this.parentElement.classList.toggle('open')">
-                                        <span class="accordion-title">Function Usage Rules — 功能使用規則</span>
-                                        <span class="accordion-arrow">&#9660;</span>
-                                    </div>
-                                    <div class="accordion-body">
-                                        <textarea id="setting-static-knowledge" rows="5" placeholder="功能呼叫規則、ID 使用方式等..."></textarea>
-                                    </div>
-                                </div>
-                                <div class="accordion-item" data-section="knowledge_base">
-                                    <div class="accordion-header" onclick="this.parentElement.classList.toggle('open')">
-                                        <span class="accordion-title">Knowledge Base — 背景知識文檔</span>
-                                        <span class="accordion-arrow">&#9660;</span>
-                                    </div>
-                                    <div class="accordion-body">
-                                        <textarea id="setting-knowledge-base" rows="8" class="json-editor" placeholder="上傳 JSON 文檔或手動輸入背景知識..." spellcheck="false"></textarea>
-                                        <div class="json-actions">
-                                            <label class="btn-small btn-upload">
-                                                Upload (.json / .txt / .md)
-                                                <input type="file" id="upload-knowledge-base" accept=".json,.txt,.md" multiple hidden>
-                                            </label>
-                                            <button class="btn-small btn-reset" id="btn-clear-knowledge-base">Clear</button>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
+                            <h3 class="settings-section-title">Exhibition Title</h3>
                             <div class="form-group">
-                                <div class="json-actions">
-                                    <button class="btn-small" id="btn-download-system-instruction">Download .json</button>
-                                    <label class="btn-small btn-upload">
-                                        Upload .json (System Instruction)
-                                        <input type="file" id="upload-system-instruction" accept=".json" hidden>
-                                    </label>
-                                </div>
+                                <input type="text" id="exhibition-title" placeholder="展覽名稱">
                             </div>
 
-                            <h3 class="settings-section-title">Robot Background Info</h3>
+                            <h3 class="settings-section-title">Telegram Notification</h3>
                             <div class="form-group">
-                                <label>Pre-injected location/shelf data (appended to system instruction at connect time)</label>
-                                <textarea id="setting-robot-info" rows="6" placeholder="Click buttons below to fetch data from robot..."></textarea>
-                                <div class="json-actions">
-                                    <button class="btn-small" id="btn-fetch-locations">Fetch Locations</button>
-                                    <button class="btn-small" id="btn-fetch-shelves">Fetch Shelves</button>
-                                </div>
+                                <label>Staff Chat ID</label>
+                                <input type="text" id="telegram-chat-id" placeholder="e.g. -1001234567890">
+                            </div>
+                            <div class="form-group" style="flex-direction: row; align-items: center; gap: 12px;">
+                                <input type="checkbox" id="patrol-telegram-notify" style="width: auto;">
+                                <label for="patrol-telegram-notify" style="margin: 0; cursor: pointer;">巡檢完成通知</label>
+                            </div>
+                            <div class="form-group" style="flex-direction: row; align-items: center; gap: 12px;">
+                                <input type="checkbox" id="crowd-telegram-notify" style="width: auto;">
+                                <label for="crowd-telegram-notify" style="margin: 0; cursor: pointer;">人潮檢查通知</label>
                             </div>
 
-                            <h3 class="settings-section-title">Function Declarations</h3>
-                            <div id="func-editor" class="func-editor">
-                                <!-- Function cards rendered by JS -->
-                            </div>
-                            <div class="json-actions">
-                                <button class="btn-small" id="btn-add-function">+ Add Function</button>
-                                <button class="btn-small" id="btn-download-func-decl">Download .json</button>
-                                <label class="btn-small btn-upload">
-                                    Upload .json
-                                    <input type="file" id="upload-func-decl" accept=".json" hidden>
-                                </label>
-                                <button class="btn-small btn-reset" id="btn-reset-func-decl">Reset to Default</button>
+                            <h3 class="settings-section-title">語音模式</h3>
+                            <div class="form-group" style="flex-direction: row; align-items: center; gap: 12px;">
+                                <input type="checkbox" id="live-auto-interrupt" style="width: auto;">
+                                <label for="live-auto-interrupt" style="margin: 0; cursor: pointer;">自動打斷（VAD）— 關閉則使用手動打斷按鈕（適合吵雜環境）</label>
                             </div>
 
                             <h3 class="settings-section-title">Token Usage</h3>
@@ -235,6 +227,118 @@
                                     <button class="btn-small" id="btn-refresh-tokens">Refresh</button>
                                     <button class="btn-small btn-reset" id="btn-reset-tokens">Reset</button>
                                 </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ═══ PROMPT TAB ═══ -->
+                    <div class="settings-pane" id="settings-pane-prompt" style="display: none;">
+                        <div class="settings-column">
+                            <h3 class="settings-section-title">Persona — AI 助手的角色與語氣</h3>
+                            <div class="form-group">
+                                <textarea id="setting-persona" class="prompt-textarea" rows="6" placeholder="定義 AI 助手的角色、語氣、回答語言..."></textarea>
+                            </div>
+
+                            <h3 class="settings-section-title">Function Usage Rules — 功能使用規則</h3>
+                            <div class="form-group">
+                                <textarea id="setting-static-knowledge" class="prompt-textarea" rows="5" placeholder="功能呼叫規則、ID 使用方式等..."></textarea>
+                            </div>
+
+                            <h3 class="settings-section-title">Knowledge Base — 背景知識文檔</h3>
+                            <div class="form-group">
+                                <textarea id="setting-knowledge-base" class="prompt-textarea json-editor" rows="8" placeholder="上傳 JSON 文檔或手動輸入背景知識..." spellcheck="false"></textarea>
+                                <div class="json-actions">
+                                    <label class="btn-small btn-upload">
+                                        Upload (.json / .txt / .md)
+                                        <input type="file" id="upload-knowledge-base" accept=".json,.txt,.md" multiple hidden>
+                                    </label>
+                                    <button class="btn-small btn-reset" id="btn-clear-knowledge-base">Clear</button>
+                                </div>
+                            </div>
+
+                            <h3 class="settings-section-title">Robot Background Info</h3>
+                            <div class="form-group">
+                                <label>Pre-injected location/shelf data (appended to system instruction at connect time)</label>
+                                <textarea id="setting-robot-info" class="prompt-textarea" rows="6" placeholder="Click buttons below to fetch data from robot..."></textarea>
+                                <div class="json-actions">
+                                    <button class="btn-small" id="btn-fetch-locations">Fetch Locations</button>
+                                    <button class="btn-small" id="btn-fetch-shelves">Fetch Shelves</button>
+                                </div>
+                            </div>
+
+                            <h3 class="settings-section-title">System Instruction Import / Export</h3>
+                            <div class="form-group">
+                                <div class="json-actions">
+                                    <button class="btn-small" id="btn-download-system-instruction">Download .json</button>
+                                    <label class="btn-small btn-upload">
+                                        Upload .json (System Instruction)
+                                        <input type="file" id="upload-system-instruction" accept=".json" hidden>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ═══ FUNCTIONS TAB ═══ -->
+                    <div class="settings-pane" id="settings-pane-functions" style="display: none;">
+                        <div class="settings-column">
+                            <h3 class="settings-section-title">Function Declarations</h3>
+                            <div id="func-editor" class="func-editor">
+                                <!-- Function cards rendered by JS -->
+                            </div>
+                            <div class="json-actions">
+                                <button class="btn-small" id="btn-add-function">+ Add Function</button>
+                                <button class="btn-small" id="btn-download-func-decl">Download .json</button>
+                                <label class="btn-small btn-upload">
+                                    Upload .json
+                                    <input type="file" id="upload-func-decl" accept=".json" hidden>
+                                </label>
+                                <button class="btn-small btn-reset" id="btn-reset-func-decl">Reset to Default</button>
+                            </div>
+
+                            <h3 class="settings-section-title">Patrol Config</h3>
+                            <div class="form-group">
+                                <label>巡檢點位</label>
+                                <div id="patrol-points-editor">
+                                    <div id="patrol-points-list"></div>
+                                    <button class="btn-small" id="btn-add-patrol-point">+ 新增巡檢點</button>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>巡檢模型</label>
+                                <div class="model-select-row">
+                                    <select id="patrol-model"></select>
+                                    <button class="btn-small btn-query-models" id="btn-query-patrol-models">Query</button>
+                                </div>
+                                <small>留空使用 Text 模型</small>
+                            </div>
+                            <div class="form-group">
+                                <label>影像分析提示</label>
+                                <textarea id="patrol-image-prompt" rows="3" placeholder="巡檢影像分析時使用的提示..."></textarea>
+                            </div>
+                            <div class="form-group" style="flex-direction: row; align-items: center; gap: 12px;">
+                                <input type="checkbox" id="patrol-video-enable" style="width: auto;">
+                                <label for="patrol-video-enable" style="margin: 0; cursor: pointer;">啟用影片分析</label>
+                            </div>
+                            <div class="form-group">
+                                <label>影片分析提示</label>
+                                <textarea id="patrol-video-prompt" rows="3" placeholder="影片分析時使用的提示..."></textarea>
+                            </div>
+
+                            <h3 class="settings-section-title">Delivery Config</h3>
+                            <div class="form-group">
+                                <label>飲料層架 ID</label>
+                                <input type="text" id="drink-shelf-id" placeholder="S01">
+                            </div>
+                            <div class="form-group">
+                                <label>飲料層架歸位地點</label>
+                                <select id="drink-shelf-home"></select>
+                            </div>
+
+                            <h3 class="settings-section-title">Guide Config</h3>
+                            <div class="form-group">
+                                <label>導覽停留時間 (秒)</label>
+                                <input type="number" id="guide-dwell-time" min="5" max="300" value="30" placeholder="30">
                             </div>
                         </div>
                     </div>
@@ -394,7 +498,7 @@
                         </div>
                     </div>
 
-                    <div style="width: 100%; max-width: 800px; margin: 16px auto 0; padding: 0;">
+                    <div style="padding: 0;">
                         <button class="btn-primary" id="btn-save-settings">Save Settings</button>
                     </div>
                 </div>
@@ -402,6 +506,23 @@
 
         </main>
     </div>
+
+    <!-- ═══ WAVEFORM OVERLAY ═══ -->
+    <div id="waveform-overlay" class="waveform-overlay">
+        <canvas id="waveform-canvas"></canvas>
+        <div id="waveform-status" class="waveform-status">正在聆聽...</div>
+        <div class="waveform-buttons">
+            <button class="interrupt-btn" id="btn-waveform-interrupt" style="display:none;">打斷</button>
+            <button class="stop-btn" id="btn-waveform-stop">停止語音</button>
+        </div>
+    </div>
+
+    <!-- ═══ TYPING INDICATOR TEMPLATE ═══ -->
+    <template id="typing-indicator-template">
+        <div class="typing-indicator">
+            <span></span><span></span><span></span>
+        </div>
+    </template>
 
     <script type="module" src="/static/js/app.js"></script>
 </body>
