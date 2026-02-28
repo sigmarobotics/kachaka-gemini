@@ -5,6 +5,7 @@ import { initDemoChat, startMic, stopMic, isMicRecording, playAudioChunk, stopPl
 import { initDemoStatus } from './demo-status.js';
 import { initDemoPatrol } from './demo-patrol.js';
 import { initDemoVoice, showListening, showSpeaking, hide as hideWaveform, onMicAmplitude, onPlaybackAmplitude } from './demo-voice.js';
+import { initFiles } from './files.js';
 
 let ws = null;
 let isConnected = false;
@@ -73,6 +74,7 @@ async function init() {
     initDemoStatus();
     initDemoPatrol();
     initSettings();
+    initFiles();
 
     // Override mic button to orchestrate waveform overlay
     // (must be after initDemoChat which adds its own listener)

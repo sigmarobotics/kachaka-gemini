@@ -6,7 +6,7 @@ import os
 import urllib.request
 import urllib.error
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, File, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -14,6 +14,7 @@ from starlette.requests import Request
 import websockets
 
 from robot_manager import robot_manager
+import file_service
 import settings_service
 import profile_service
 import token_service
@@ -279,6 +280,77 @@ def list_models(mode: str = "live"):
         })
 
     return {"models": matched_models}
+
+
+# ─── File Management endpoints ────────────────────────────────────────────────
+
+_FILE_SAFE_FIELDS = {"id", "filename", "mime_type", "size_bytes", "uploaded_at", "expires_at", "enabled", "expired"}
+
+
+def _safe_record(r: dict) -> dict:
+    return {k: v for k, v in r.items() if k in _FILE_SAFE_FIELDS}
+
+
+@app.get("/api/files")
+async def list_files():
+    return [_safe_record(r) for r in file_service.list_files()]
+
+
+@app.post("/api/files/upload")
+async def upload_file(file: UploadFile = File(...)):
+    api_key = settings_service.get("gemini_api_key", "")
+    if not api_key:
+        return JSONResponse({"error": "Gemini API key not configured"}, status_code=400)
+
+    contents = await file.read()
+
+    # Validate file size (2GB max)
+    if len(contents) > 2 * 1024 * 1024 * 1024:
+        return JSONResponse({"error": "File too large (max 2GB)"}, status_code=400)
+
+    try:
+        record = await file_service.upload_file(
+            file_bytes=contents,
+            filename=file.filename or "unnamed",
+            mime_type=file.content_type or "application/octet-stream",
+            api_key=api_key,
+        )
+        return _safe_record(record)
+    except Exception as e:
+        print(f"[Files] Upload error: {e}")
+        import traceback
+        traceback.print_exc()
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.delete("/api/files/{file_id}")
+async def delete_file_endpoint(file_id: str):
+    api_key = settings_service.get("gemini_api_key", "")
+    ok = await file_service.delete_file(file_id, api_key)
+    if not ok:
+        return JSONResponse({"error": "File not found"}, status_code=404)
+    return {"status": "ok"}
+
+
+@app.patch("/api/files/{file_id}/toggle")
+async def toggle_file(file_id: str, request: Request):
+    body = await request.json()
+    enabled = body.get("enabled", True)
+    ok = file_service.toggle_file(file_id, enabled)
+    if not ok:
+        return JSONResponse({"error": "File not found"}, status_code=404)
+    return {"status": "ok", "enabled": enabled}
+
+
+@app.post("/api/files/{file_id}/reupload")
+async def reupload_file(file_id: str):
+    api_key = settings_service.get("gemini_api_key", "")
+    if not api_key:
+        return JSONResponse({"error": "Gemini API key not configured"}, status_code=400)
+    record = await file_service.reupload_file(file_id, api_key)
+    if not record:
+        return JSONResponse({"error": "File not found or local copy missing"}, status_code=404)
+    return _safe_record(record)
 
 
 @app.post("/api/generate_interim_audio")

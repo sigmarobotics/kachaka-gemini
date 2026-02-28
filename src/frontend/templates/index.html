@@ -132,6 +132,7 @@
                     <button class="settings-tab-btn" data-settings-tab="functions">Functions</button>
                     <button class="settings-tab-btn" data-settings-tab="text-api">Text API</button>
                     <button class="settings-tab-btn" data-settings-tab="live-api">Live API</button>
+                    <button class="settings-tab-btn" data-settings-tab="files">Files</button>
                 </div>
 
                 <div class="settings-container">
@@ -494,6 +495,32 @@
                                     <span id="interim-generate-status" class="interim-status"></span>
                                 </div>
                                 <div id="interim-audio-status" class="interim-audio-list"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ═══ FILES TAB ═══ -->
+                    <div class="settings-pane" id="settings-pane-files" style="display: none;">
+                        <div class="settings-column">
+                            <h3 class="settings-section-title">File Upload</h3>
+                            <p class="settings-hint">Upload files to use as context in Text API conversations. Supported: PDF, images, audio, video, text files. Max 2GB per file.</p>
+
+                            <div class="file-upload-area">
+                                <input type="file" id="file-upload-input" style="display: none;">
+                                <button class="btn" id="btn-choose-file">Choose File</button>
+                                <span id="file-upload-name" class="file-upload-name">No file selected</span>
+                                <button class="btn btn-primary" id="btn-upload-file" disabled>Upload</button>
+                            </div>
+                            <div id="file-upload-progress" class="file-upload-progress" style="display: none;">
+                                <div class="progress-bar"><div class="progress-fill" id="file-progress-fill"></div></div>
+                                <span id="file-upload-status">Uploading...</span>
+                            </div>
+
+                            <h3 class="settings-section-title" style="margin-top: 1.5rem;">Uploaded Files</h3>
+                            <p class="settings-hint">Toggle checkbox to include/exclude files from conversations. Files expire on Google's servers after 48 hours.</p>
+
+                            <div id="file-list" class="file-list">
+                                <div class="file-list-empty">No files uploaded yet</div>
                             </div>
                         </div>
                     </div>
