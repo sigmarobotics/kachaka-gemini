@@ -113,7 +113,9 @@ class GeminiLiveSession:
             if not auto_interrupt:
                 setup_config["realtimeInputConfig"] = {
                     "automaticActivityDetection": {
-                        "disabled": True,
+                        "disabled": False,
+                        "startOfSpeechSensitivity": "START_SENSITIVITY_LOW",
+                        "endOfSpeechSensitivity": "END_SENSITIVITY_LOW",
                     }
                 }
 
