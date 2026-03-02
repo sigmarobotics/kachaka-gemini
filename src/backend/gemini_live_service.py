@@ -23,7 +23,6 @@ class GeminiLiveSession:
         self._camera_task = None
         self._closed = False
         self._session_id = uuid.uuid4().hex[:12]
-        self._auto_vad = True  # tracks whether automatic activity detection is on
 
     async def connect(self):
         settings = settings_service.get_all()
@@ -99,9 +98,6 @@ class GeminiLiveSession:
             if enable_google_search:
                 tools.append({"googleSearch": {}})
 
-            # VAD configuration
-            auto_interrupt = settings.get("live_auto_interrupt", True)
-            self._auto_vad = auto_interrupt
             setup_config = {
                 "model": f"models/{model}",
                 "generationConfig": generation_config,
@@ -110,14 +106,6 @@ class GeminiLiveSession:
                 },
                 "tools": tools,
             }
-            if not auto_interrupt:
-                setup_config["realtimeInputConfig"] = {
-                    "automaticActivityDetection": {
-                        "disabled": False,
-                        "startOfSpeechSensitivity": "START_SENSITIVITY_LOW",
-                        "endOfSpeechSensitivity": "END_SENSITIVITY_LOW",
-                    }
-                }
 
             setup_msg = {"setup": setup_config}
 
@@ -183,21 +171,6 @@ class GeminiLiveSession:
             }
         }
         await self.gemini_ws.send(json.dumps(msg))
-
-    async def send_interrupt(self):
-        """Manually interrupt the model's current generation via activity signals."""
-        if not self.gemini_ws:
-            return
-        # activityStart/activityEnd are only valid when automatic VAD is disabled;
-        # sending them in auto-VAD mode causes a 1007 disconnect.
-        if self._auto_vad:
-            return
-        await self.gemini_ws.send(json.dumps(
-            {"realtimeInput": {"activityStart": {}}}
-        ))
-        await self.gemini_ws.send(json.dumps(
-            {"realtimeInput": {"activityEnd": {}}}
-        ))
 
     async def _stream_camera(self):
         """Periodically send camera frames to Gemini from CameraStreamer."""

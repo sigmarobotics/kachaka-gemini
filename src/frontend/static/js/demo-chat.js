@@ -10,6 +10,7 @@ let workletNode = null;
 let workletBuffer = [];
 let workletBufferLength = 0;
 let isMicActive = false;
+let micMuted = false; // exhibition mode: mute mic while AI is speaking
 
 // Audio playback
 let playbackCtx = null;
@@ -56,7 +57,7 @@ export async function startMic() {
                 if (!isMicActive || !ws || ws.readyState !== WebSocket.OPEN) return;
                 const float32Chunk = e.data;
 
-                // Forward amplitude for waveform
+                // Forward amplitude for waveform (even when muted)
                 if (onMicAmplitude) {
                     let sum = 0;
                     for (let i = 0; i < float32Chunk.length; i++) {
@@ -64,6 +65,9 @@ export async function startMic() {
                     }
                     onMicAmplitude(sum / float32Chunk.length);
                 }
+
+                // Exhibition mode: skip sending audio while AI is speaking
+                if (micMuted) return;
 
                 workletBuffer.push(float32Chunk);
                 workletBufferLength += float32Chunk.length;
@@ -196,6 +200,16 @@ export function setOnMicAmplitude(cb) {
 
 export function isMicRecording() {
     return isMicActive;
+}
+
+export function muteMic() {
+    micMuted = true;
+    workletBuffer = [];
+    workletBufferLength = 0;
+}
+
+export function unmuteMic() {
+    micMuted = false;
 }
 
 // ─── PCM Utils ───────────────────────────────────────

@@ -2284,6 +2284,28 @@ input[type="number"]:focus {
     transform: scale(0.95);
 }
 
+/* ── Exhibition Mode Mute Indicator ─────────────────────────────────────── */
+.exhibition-mute-indicator {
+    position: fixed;
+    top: 60px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.8);
+    color: #FF7043;
+    padding: 8px 20px;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 500;
+    z-index: 9999;
+    pointer-events: none;
+    animation: fadeInMute 0.3s ease;
+}
+
+@keyframes fadeInMute {
+    from { opacity: 0; transform: translateX(-50%) translateY(-8px); }
+    to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
 /* ── Demo Responsive — Stack vertically on narrow screens ────────────────── */
 @media (max-width: 768px) {
     .demo-header {

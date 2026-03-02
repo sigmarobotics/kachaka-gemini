@@ -1,7 +1,7 @@
 // app.js — Unified entry point (merges demo-app.js logic + dev toolbar from chat.js)
 import { initSettings } from './settings.js';
 import state, { escapeHtml } from './state.js';
-import { initDemoChat, startMic, stopMic, isMicRecording, playAudioChunk, stopPlayback, setOnPlaybackAmplitude, setOnMicAmplitude } from './demo-chat.js';
+import { initDemoChat, startMic, stopMic, isMicRecording, playAudioChunk, stopPlayback, setOnPlaybackAmplitude, setOnMicAmplitude, muteMic, unmuteMic } from './demo-chat.js';
 import { initDemoStatus } from './demo-status.js';
 import { initDemoPatrol } from './demo-patrol.js';
 import { initDemoVoice, showListening, showSpeaking, hide as hideWaveform, onMicAmplitude, onPlaybackAmplitude } from './demo-voice.js';
@@ -201,12 +201,21 @@ function handleMessage(msg) {
             showSpeaking();
             playAudioChunk(msg.data);
             updateInterruptBtn(true);
+            // Exhibition mode: mute mic while AI is speaking
+            if (settings.live_auto_interrupt === false) {
+                muteMic();
+                showExhibitionMute(true);
+            }
             break;
 
         case 'interrupted':
             // User interrupted AI — stop playback, resume listening
             stopPlayback();
             updateInterruptBtn(false);
+            if (settings.live_auto_interrupt === false) {
+                unmuteMic();
+                showExhibitionMute(false);
+            }
             if (currentMode === 'live') showListening();
             break;
 
@@ -221,6 +230,11 @@ function handleMessage(msg) {
         case 'turn_complete':
             hideTypingIndicator();
             updateInterruptBtn(false);
+            // Exhibition mode: unmute mic when AI finishes
+            if (settings.live_auto_interrupt === false) {
+                unmuteMic();
+                showExhibitionMute(false);
+            }
             // In live mode, stay in listening state (don't close waveform)
             if (currentMode === 'live') {
                 stopPlayback();
@@ -323,6 +337,19 @@ function handleSend() {
     addUserMessage(text);
     input.value = '';
     showTypingIndicator();
+}
+
+// ─── Exhibition Mode Mute Indicator ─────────────────
+function showExhibitionMute(muted) {
+    let el = document.getElementById('exhibition-mute-indicator');
+    if (!el) {
+        el = document.createElement('div');
+        el.id = 'exhibition-mute-indicator';
+        el.className = 'exhibition-mute-indicator';
+        el.textContent = '展場模式：AI 回應中，麥克風已靜音';
+        document.body.appendChild(el);
+    }
+    el.style.display = muted ? '' : 'none';
 }
 
 // ─── Interrupt Button ────────────────────────────────

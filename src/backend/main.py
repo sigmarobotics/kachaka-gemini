@@ -667,13 +667,6 @@ async def ws_chat(websocket: WebSocket):
                     except Exception:
                         pass
 
-            elif msg_type == "interrupt":
-                if session and hasattr(session, 'send_interrupt'):
-                    try:
-                        await session.send_interrupt()
-                    except Exception:
-                        pass
-
             elif msg_type == "clear_history":
                 if session and hasattr(session, 'clear_history'):
                     await session.clear_history()
