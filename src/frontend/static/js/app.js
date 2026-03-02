@@ -380,6 +380,8 @@ async function switchMode(newMode) {
         stopMic();
         stopPlayback();
         hideWaveform();
+        unmuteMic();
+        showExhibitionMute(false);
     }
 
     // Disconnect current session

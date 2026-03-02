@@ -5,6 +5,8 @@ import traceback
 import uuid
 from datetime import datetime, timezone, timedelta
 import websockets
+from google import genai
+from google.genai import types
 from robot_manager import robot_manager
 import settings_service
 import token_service
@@ -276,6 +278,16 @@ class GeminiLiveSession:
                 # so run in thread pool to avoid blocking the event loop
                 result = await asyncio.to_thread(robot_manager.execute_function_call, fn_name, fn_args)
 
+                # Two-stage: for capture_camera, the Live API toolResponse
+                # doesn't support multimodal data (images). Analyze the image
+                # via a separate generateContent call and include the text
+                # analysis in the toolResponse (same pattern as Google Search).
+                if fn_name == "capture_camera" and result.get("ok"):
+                    frame = robot_manager.get_camera_frame()
+                    if frame and frame.get("ok") and frame.get("image_base64"):
+                        analysis = await self._analyze_camera_image(frame["image_base64"])
+                        result["image_analysis"] = analysis
+
                 # Notify client about result
                 await self._send_to_client({
                     "type": "function_result",
@@ -296,29 +308,6 @@ class GeminiLiveSession:
                     }
                 }
                 if self.gemini_ws:
-                    # For capture_camera, send the image as clientContent BEFORE
-                    # the toolResponse so Gemini sees the image when processing
-                    # the function result (otherwise it starts generating a response
-                    # from toolResponse alone and ignores the late-arriving image).
-                    if fn_name == "capture_camera" and result.get("ok"):
-                        frame = robot_manager.get_camera_frame()
-                        if frame and frame.get("ok") and frame.get("image_base64"):
-                            img_msg = {
-                                "clientContent": {
-                                    "turns": [{
-                                        "role": "user",
-                                        "parts": [{
-                                            "inlineData": {
-                                                "mimeType": "image/jpeg",
-                                                "data": frame["image_base64"],
-                                            }
-                                        }]
-                                    }],
-                                    "turnComplete": False,
-                                }
-                            }
-                            await self.gemini_ws.send(json.dumps(img_msg))
-
                     await self.gemini_ws.send(json.dumps(tool_response))
 
         # Handle toolCallCancellation
@@ -346,6 +335,42 @@ class GeminiLiveSession:
                     "response": response,
                     "total": total,
                 })
+
+    async def _analyze_camera_image(self, image_base64: str) -> str:
+        """Analyze camera image via a separate generateContent call.
+
+        The Live API's toolResponse doesn't support multimodal data (images),
+        so we use a two-stage approach: analyze the image with a one-shot
+        generateContent call and return the text description. This is the
+        same pattern used for Google Search in the Text API.
+        """
+        try:
+            settings = settings_service.get_all()
+            api_key = settings.get("gemini_api_key", "")
+            if not api_key:
+                return "Unable to analyze: API key not configured"
+
+            client = genai.Client(api_key=api_key)
+            model = settings.get("text_model", "gemini-2.0-flash")
+
+            image_bytes = base64.b64decode(image_base64)
+            response = await asyncio.to_thread(
+                client.models.generate_content,
+                model=model,
+                contents=[
+                    types.Content(role="user", parts=[
+                        types.Part.from_bytes(data=image_bytes, mime_type="image/jpeg"),
+                        types.Part.from_text(text="請詳細描述這張照片中你看到的所有內容。"),
+                    ])
+                ],
+            )
+            analysis = response.text or "No analysis available"
+            print(f"[Live] Camera image analysis ({len(analysis)} chars): {analysis[:200]}")
+            return analysis
+        except Exception as e:
+            print(f"[Live] Camera image analysis error: {e}")
+            traceback.print_exc()
+            return f"Image analysis failed: {e}"
 
     async def _send_to_client(self, msg: dict):
         """Send a message to the browser client."""
