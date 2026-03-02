@@ -296,21 +296,30 @@ class GeminiLiveSession:
                     }
                 }
                 if self.gemini_ws:
-                    await self.gemini_ws.send(json.dumps(tool_response))
-
-                    # For capture_camera, also send the image as realtime input
+                    # For capture_camera, send the image as clientContent BEFORE
+                    # the toolResponse so Gemini sees the image when processing
+                    # the function result (otherwise it starts generating a response
+                    # from toolResponse alone and ignores the late-arriving image).
                     if fn_name == "capture_camera" and result.get("ok"):
                         frame = robot_manager.get_camera_frame()
                         if frame and frame.get("ok") and frame.get("image_base64"):
                             img_msg = {
-                                "realtimeInput": {
-                                    "video": {
-                                        "mimeType": "image/jpeg",
-                                        "data": frame["image_base64"],
-                                    }
+                                "clientContent": {
+                                    "turns": [{
+                                        "role": "user",
+                                        "parts": [{
+                                            "inlineData": {
+                                                "mimeType": "image/jpeg",
+                                                "data": frame["image_base64"],
+                                            }
+                                        }]
+                                    }],
+                                    "turnComplete": False,
                                 }
                             }
                             await self.gemini_ws.send(json.dumps(img_msg))
+
+                    await self.gemini_ws.send(json.dumps(tool_response))
 
         # Handle toolCallCancellation
         elif "toolCallCancellation" in msg:
