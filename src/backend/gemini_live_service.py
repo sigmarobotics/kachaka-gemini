@@ -60,7 +60,8 @@ class GeminiLiveSession:
         print(f"System instruction ({len(system_prompt)} chars):\n{system_prompt[:500]}")
 
         voice_name = settings.get("voice_name", "Aoede")
-        func_decls = settings.get("function_declarations", DEFAULT_FUNCTION_DECLARATIONS)
+        all_decls = settings.get("function_declarations", DEFAULT_FUNCTION_DECLARATIONS)
+        func_decls = [f for f in all_decls if f.get("enabled", True)]
         enable_google_search = settings.get("live_enable_google_search", False)
 
         live_temperature = _clamp(settings.get("live_temperature", 1.0), 0.0, 2.0, 1.0)

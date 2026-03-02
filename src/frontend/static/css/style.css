@@ -941,9 +941,58 @@ input[type="number"]:focus {
     background: var(--void);
 }
 
+.func-card.disabled {
+    opacity: 0.45;
+}
+
+.func-card.disabled .func-card-name {
+    text-decoration: line-through;
+}
+
+/* ── FC Toggle Switch ── */
+.func-toggle {
+    position: relative;
+    display: inline-block;
+    width: 32px;
+    height: 18px;
+    margin-right: 8px;
+    flex-shrink: 0;
+}
+
+.func-toggle input { opacity: 0; width: 0; height: 0; }
+
+.func-toggle-slider {
+    position: absolute;
+    inset: 0;
+    background: var(--panel-dark);
+    border-radius: 9px;
+    transition: background 0.2s;
+    cursor: pointer;
+}
+
+.func-toggle-slider::before {
+    content: '';
+    position: absolute;
+    width: 14px;
+    height: 14px;
+    left: 2px;
+    top: 2px;
+    background: var(--text-muted);
+    border-radius: 50%;
+    transition: transform 0.2s, background 0.2s;
+}
+
+.func-toggle input:checked + .func-toggle-slider {
+    background: var(--amber);
+}
+
+.func-toggle input:checked + .func-toggle-slider::before {
+    transform: translateX(14px);
+    background: var(--void);
+}
+
 .func-card-header {
     display: flex;
-    justify-content: space-between;
     align-items: center;
     padding: 10px 14px;
     background: var(--panel-mid);
@@ -971,6 +1020,7 @@ input[type="number"]:focus {
     display: flex;
     gap: 8px;
     align-items: center;
+    margin-left: auto;
 }
 
 .func-card-arrow {

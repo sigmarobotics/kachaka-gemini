@@ -63,7 +63,8 @@ class GeminiTextSession:
         system_prompt = system_prompt.replace("{{CURRENT_TIME}}", current_time)
         print(f"[TextAPI] System instruction ({len(system_prompt)} chars):\n{system_prompt[:500]}")
 
-        func_decls = list(settings.get("function_declarations", DEFAULT_FUNCTION_DECLARATIONS))
+        all_decls = settings.get("function_declarations", DEFAULT_FUNCTION_DECLARATIONS)
+        func_decls = list(f for f in all_decls if f.get("enabled", True))
         self._enable_google_search = settings.get("text_enable_google_search", False)
 
         # Google Search + function calling can't coexist in the same request

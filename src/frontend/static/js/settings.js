@@ -487,13 +487,18 @@ function renderFuncEditor(declarations) {
 function renderFuncCard(fn, index) {
     const name = fn.name || '';
     const desc = fn.description || '';
+    const enabled = fn.enabled !== false; // default true
     const params = fn.parameters || { type: 'object', properties: {}, required: [] };
     const props = params.properties || {};
     const required = params.required || [];
 
     return `
-    <div class="func-card" data-index="${index}">
+    <div class="func-card${enabled ? '' : ' disabled'}" data-index="${index}">
         <div class="func-card-header" onclick="this.parentElement.classList.toggle('open')">
+            <label class="func-toggle" onclick="event.stopPropagation()">
+                <input type="checkbox" class="func-enabled" ${enabled ? 'checked' : ''} onchange="toggleFuncCard(this)">
+                <span class="func-toggle-slider"></span>
+            </label>
             <span class="func-card-name">${escapeAttr(name) || '(unnamed)'}</span>
             <div class="func-card-actions">
                 <span class="func-card-arrow">&#9660;</span>
@@ -574,10 +579,12 @@ function collectFuncDeclarations() {
             if (isReq) required.push(pName);
         });
 
+        const enabled = card.querySelector('.func-enabled')?.checked !== false;
         result.push({
             name,
             description: desc,
             parameters: { type: 'object', properties, required },
+            enabled,
         });
     });
     return result;
@@ -587,6 +594,11 @@ function collectFuncDeclarations() {
 window.deleteFuncCard = function(index) {
     const card = document.querySelector(`.func-card[data-index="${index}"]`);
     if (card && confirm('Delete this function?')) card.remove();
+};
+
+window.toggleFuncCard = function(checkbox) {
+    const card = checkbox.closest('.func-card');
+    if (card) card.classList.toggle('disabled', !checkbox.checked);
 };
 
 window.addParam = function(funcIndex) {
