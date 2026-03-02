@@ -63,7 +63,10 @@ class GeminiLiveSession:
 
         voice_name = settings.get("voice_name", "Aoede")
         all_decls = settings.get("function_declarations", DEFAULT_FUNCTION_DECLARATIONS)
-        func_decls = [f for f in all_decls if f.get("enabled", True)]
+        func_decls = [
+            {k: v for k, v in f.items() if k != "enabled"}
+            for f in all_decls if f.get("enabled", True)
+        ]
         enable_google_search = settings.get("live_enable_google_search", False)
 
         live_temperature = _clamp(settings.get("live_temperature", 1.0), 0.0, 2.0, 1.0)
