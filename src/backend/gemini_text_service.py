@@ -63,13 +63,37 @@ class GeminiTextSession:
         system_prompt = system_prompt.replace("{{CURRENT_TIME}}", current_time)
         print(f"[TextAPI] System instruction ({len(system_prompt)} chars):\n{system_prompt[:500]}")
 
-        func_decls = settings.get("function_declarations", DEFAULT_FUNCTION_DECLARATIONS)
+        func_decls = list(settings.get("function_declarations", DEFAULT_FUNCTION_DECLARATIONS))
         self._enable_google_search = settings.get("text_enable_google_search", False)
 
         # Google Search + function calling can't coexist in the same request
         # for some models (e.g. gemini-3-flash-preview returns 400).
-        # Instead, we only send function declarations here and handle
-        # google_search calls via a separate API call in _handle_google_search().
+        # Instead, we inject a google_search function declaration so the model
+        # can emit a google_search call, which we intercept and handle via a
+        # separate API call in _handle_google_search().
+        if self._enable_google_search:
+            has_gs = any(f.get("name") == "google_search" for f in func_decls)
+            if not has_gs:
+                func_decls.append({
+                    "name": "google_search",
+                    "description": (
+                        "搜尋 Google 以取得即時資訊。當知識庫無法回答、"
+                        "或使用者詢問即時新聞、天氣、時事等需要最新資料的問題時調用。"
+                    ),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "queries": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "搜尋關鍵字列表",
+                            }
+                        },
+                        "required": ["queries"],
+                    },
+                })
+                print("[TextAPI] Injected google_search function declaration")
+
         tool_list = [types.Tool(function_declarations=func_decls)]
 
         # Generation parameters
