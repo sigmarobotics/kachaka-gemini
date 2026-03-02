@@ -23,6 +23,7 @@ class GeminiLiveSession:
         self._camera_task = None
         self._closed = False
         self._session_id = uuid.uuid4().hex[:12]
+        self._auto_vad = True  # tracks whether automatic activity detection is on
 
     async def connect(self):
         settings = settings_service.get_all()
@@ -100,6 +101,7 @@ class GeminiLiveSession:
 
             # VAD configuration
             auto_interrupt = settings.get("live_auto_interrupt", True)
+            self._auto_vad = auto_interrupt
             setup_config = {
                 "model": f"models/{model}",
                 "generationConfig": generation_config,
@@ -186,6 +188,10 @@ class GeminiLiveSession:
     async def send_interrupt(self):
         """Manually interrupt the model's current generation via activity signals."""
         if not self.gemini_ws:
+            return
+        # activityStart/activityEnd are only valid when automatic VAD is disabled;
+        # sending them in auto-VAD mode causes a 1007 disconnect.
+        if self._auto_vad:
             return
         await self.gemini_ws.send(json.dumps(
             {"realtimeInput": {"activityStart": {}}}
@@ -325,10 +331,10 @@ class GeminiLiveSession:
                         if frame and frame.get("ok") and frame.get("image_base64"):
                             img_msg = {
                                 "realtimeInput": {
-                                    "mediaChunks": [{
+                                    "video": {
                                         "mimeType": "image/jpeg",
                                         "data": frame["image_base64"],
-                                    }]
+                                    }
                                 }
                             }
                             await self.gemini_ws.send(json.dumps(img_msg))
