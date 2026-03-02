@@ -262,6 +262,7 @@ class GeminiLiveSession:
 
         # Handle toolCall
         elif "toolCall" in msg:
+            import time
             tool_call = msg["toolCall"]
             function_calls = tool_call.get("functionCalls", [])
 
@@ -269,6 +270,7 @@ class GeminiLiveSession:
                 fn_name = fc.get("name", "")
                 fn_args = fc.get("args", {})
                 fn_id = fc.get("id", "")
+                t_start = time.monotonic()
 
                 # Notify client about the function call
                 await self._send_to_client({
@@ -280,15 +282,17 @@ class GeminiLiveSession:
                 # Movement commands are blocking (RobotController waits for completion),
                 # so run in thread pool to avoid blocking the event loop
                 result = await asyncio.to_thread(robot_manager.execute_function_call, fn_name, fn_args)
+                print(f"[Live] FC {fn_name} execute: {time.monotonic()-t_start:.1f}s")
 
                 # Two-stage: for capture_camera, the Live API toolResponse
-                # doesn't support multimodal data (images). Analyze the image
-                # via a separate generateContent call and include the text
-                # analysis in the toolResponse (same pattern as Google Search).
+                # doesn't support multimodal data (images). Forward the user's
+                # query + image to a Text API generateContent call for analysis,
+                # then return the text result so the Live model can read it aloud.
                 if fn_name == "capture_camera" and result.get("ok"):
                     frame = robot_manager.get_camera_frame()
                     if frame and frame.get("ok") and frame.get("image_base64"):
-                        analysis = await self._analyze_camera_image(frame["image_base64"])
+                        user_query = fn_args.get("query", "")
+                        analysis = await self._analyze_camera_image(frame["image_base64"], user_query)
                         result["image_analysis"] = analysis
 
                 # Notify client about result
@@ -310,11 +314,16 @@ class GeminiLiveSession:
                         ]
                     }
                 }
-                if self.gemini_ws:
+                if self.gemini_ws and not self._closed:
                     await self.gemini_ws.send(json.dumps(tool_response))
+                    print(f"[Live] FC {fn_name} total: {time.monotonic()-t_start:.1f}s, toolResponse sent")
+                else:
+                    print(f"[Live] FC {fn_name} total: {time.monotonic()-t_start:.1f}s, SKIPPED — ws closed")
 
         # Handle toolCallCancellation
         elif "toolCallCancellation" in msg:
+            ids = [fc.get("id", "?") for fc in msg["toolCallCancellation"].get("ids", [])]
+            print(f"[Live] toolCallCancellation: ids={ids}")
             await self._send_to_client({
                 "type": "status",
                 "message": "Tool call cancelled by Gemini",
@@ -339,14 +348,15 @@ class GeminiLiveSession:
                     "total": total,
                 })
 
-    async def _analyze_camera_image(self, image_base64: str) -> str:
+    async def _analyze_camera_image(self, image_base64: str, user_query: str = "") -> str:
         """Analyze camera image via a separate generateContent call.
 
         The Live API's toolResponse doesn't support multimodal data (images),
-        so we use a two-stage approach: analyze the image with a one-shot
-        generateContent call and return the text description. This is the
-        same pattern used for Google Search in the Text API.
+        so we forward the user's query + image to the Text API model and
+        return the text analysis. The Live model then reads it aloud.
         """
+        import time
+        t0 = time.monotonic()
         try:
             settings = settings_service.get_all()
             api_key = settings.get("gemini_api_key", "")
@@ -356,22 +366,40 @@ class GeminiLiveSession:
             client = genai.Client(api_key=api_key)
             model = settings.get("text_model", "gemini-2.0-flash")
 
+            user_prompt = user_query.strip() if user_query else "請詳細描述這張照片中你看到的所有內容。"
+
+            # Use the same text model as the Text API session for analysis.
+            analysis_model = model
+
+            sys_instruction = (
+                "你是一個影像分析助手。請根據使用者的問題分析照片內容。"
+                "用簡潔的口語化中文回答（2-3句話），不要使用 markdown 格式、"
+                "列表符號或特殊字元。直接描述你看到的內容。"
+            )
+
+            print(f"[Live] Camera analysis: model={analysis_model}, query={user_prompt[:80]}")
+
             image_bytes = base64.b64decode(image_base64)
             response = await asyncio.to_thread(
                 client.models.generate_content,
-                model=model,
+                model=analysis_model,
                 contents=[
                     types.Content(role="user", parts=[
                         types.Part.from_bytes(data=image_bytes, mime_type="image/jpeg"),
-                        types.Part.from_text(text="請詳細描述這張照片中你看到的所有內容。"),
+                        types.Part.from_text(text=user_prompt),
                     ])
                 ],
+                config=types.GenerateContentConfig(
+                    system_instruction=sys_instruction,
+                ),
             )
+            elapsed = time.monotonic() - t0
             analysis = response.text or "No analysis available"
-            print(f"[Live] Camera image analysis ({len(analysis)} chars): {analysis[:200]}")
+            print(f"[Live] Camera analysis done in {elapsed:.1f}s ({len(analysis)} chars): {analysis[:200]}")
             return analysis
         except Exception as e:
-            print(f"[Live] Camera image analysis error: {e}")
+            elapsed = time.monotonic() - t0
+            print(f"[Live] Camera image analysis error ({elapsed:.1f}s): {e}")
             traceback.print_exc()
             return f"Image analysis failed: {e}"
 

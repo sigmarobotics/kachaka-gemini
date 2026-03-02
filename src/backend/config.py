@@ -99,9 +99,18 @@ DEFAULT_FUNCTION_DECLARATIONS = [
         "name": "capture_camera",
         "description": (
             "視覺檢測指令。當用戶詢問『你看到什麼』、『前面有什麼』、『檢查環境風險』"
-            "或請求視覺描述時調用。此功能會觸發相機拍照並回傳圖像供分析。"
+            "或請求視覺描述時調用。必須在 query 參數中填入使用者的原始需求。"
+            "回傳結果的 image_analysis 欄位包含影像分析文字，請直接朗讀給使用者聽。"
         ),
-        "parameters": {"type": "object", "properties": {}},
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "使用者的原始需求或問題，例如：'前面有什麼障礙物？'、'幫我看看這是什麼'",
+                },
+            },
+        },
     },
     {
         "name": "guide_to_booth",
