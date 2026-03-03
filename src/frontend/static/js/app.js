@@ -1,7 +1,7 @@
 // app.js — Unified entry point (merges demo-app.js logic + dev toolbar from chat.js)
 import { initSettings } from './settings.js';
 import state, { escapeHtml } from './state.js';
-import { initDemoChat, startMic, stopMic, isMicRecording, playAudioChunk, stopPlayback, setOnPlaybackAmplitude, setOnMicAmplitude, muteMic, unmuteMic } from './demo-chat.js';
+import { initDemoChat, startMic, stopMic, isMicRecording, playAudioChunk, stopPlayback, getPlaybackRemainingMs, setOnPlaybackAmplitude, setOnMicAmplitude, muteMic, unmuteMic } from './demo-chat.js';
 import { initDemoStatus } from './demo-status.js';
 import { initDemoPatrol } from './demo-patrol.js';
 import { initDemoVoice, showListening, showSpeaking, hide as hideWaveform, onMicAmplitude, onPlaybackAmplitude } from './demo-voice.js';
@@ -230,15 +230,22 @@ function handleMessage(msg) {
         case 'turn_complete':
             hideTypingIndicator();
             updateInterruptBtn(false);
-            // Exhibition mode: unmute mic when AI finishes
-            if (settings.live_auto_interrupt === false) {
-                unmuteMic();
-                showExhibitionMute(false);
-            }
-            // In live mode, stay in listening state (don't close waveform)
             if (currentMode === 'live') {
-                stopPlayback();
-                showListening();
+                // Let queued audio finish playing naturally before unmuting mic.
+                const remainMs = getPlaybackRemainingMs();
+                if (settings.live_auto_interrupt === false && remainMs > 0) {
+                    setTimeout(() => {
+                        unmuteMic();
+                        showExhibitionMute(false);
+                        showListening();
+                    }, remainMs + 200);  // +200ms buffer
+                } else {
+                    if (settings.live_auto_interrupt === false) {
+                        unmuteMic();
+                        showExhibitionMute(false);
+                    }
+                    showListening();
+                }
             } else {
                 hideWaveform();
             }

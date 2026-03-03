@@ -185,19 +185,18 @@ DEFAULT_FUNCTION_DECLARATIONS = [
         "name": "deliver_drink",
         "description": (
             "送飲料指令。當訪客要求『幫我送飲料』、『我要點飲料』時使用。"
-            "呼叫前請先告知用戶你即將派機器人去取飲料，收到結果後告知送達狀態。"
+            "呼叫前請先告知用戶你即將派機器人送飲料，收到結果後告知送達狀態。"
+            "不需要任何參數。"
         ),
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "destination_id": {
-                    "type": "string",
-                    "description": "飲料送達目的地 ID",
-                    "enum": ["L01", "L02", "L03", "L04", "L05"],
-                }
-            },
-            "required": ["destination_id"],
-        },
+        "parameters": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "return_drink",
+        "description": (
+            "飲料架歸位指令。當用戶說『飲料收回去』、『把架子放回去』、『收走飲料』時使用。"
+            "不需要任何參數。"
+        ),
+        "parameters": {"type": "object", "properties": {}},
     },
 ]
 
@@ -214,6 +213,7 @@ DEFAULT_INTERIM_PHRASES = {
     "check_crowd": "正在前往查看人潮狀況",
     "notify_staff": "正在通知工作人員",
     "deliver_drink": "好的，正在幫你送飲料",
+    "return_drink": "好的，正在把飲料架收回去",
 }
 
 DEFAULT_PERSONA = (
@@ -390,7 +390,6 @@ DEFAULT_SETTINGS = {
     "function_declarations": DEFAULT_FUNCTION_DECLARATIONS,
     "voice_name": "Aoede",
     "shelf_ids": [],
-    "enable_camera_to_ai": False,
     "enable_interim_response": False,
     "interim_phrases": DEFAULT_INTERIM_PHRASES,
     "interim_audio": {},

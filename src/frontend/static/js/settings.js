@@ -57,7 +57,6 @@ export async function loadSettings() {
         const textGoogleSearch = document.getElementById('setting-text-google-search');
         const liveGoogleSearch = document.getElementById('setting-live-google-search');
         const shelfIdsInput = document.getElementById('setting-shelf-ids');
-        const cameraToggle = document.getElementById('setting-camera-to-ai');
         const interimToggle = document.getElementById('setting-enable-interim');
         const interimPhrasesInput = document.getElementById('setting-interim-phrases');
 
@@ -97,7 +96,6 @@ export async function loadSettings() {
         if (textGoogleSearch) textGoogleSearch.checked = settings.text_enable_google_search || false;
         if (liveGoogleSearch) liveGoogleSearch.checked = settings.live_enable_google_search || false;
         if (shelfIdsInput) shelfIdsInput.value = (settings.shelf_ids || []).join(', ');
-        if (cameraToggle) cameraToggle.checked = settings.enable_camera_to_ai || false;
         const robotIpInput = document.getElementById('setting-robot-ip');
         if (robotIpInput) robotIpInput.value = settings.robot_ip || '';
 
@@ -640,7 +638,6 @@ async function saveSettings() {
     const textGoogleSearch = document.getElementById('setting-text-google-search');
     const liveGoogleSearch = document.getElementById('setting-live-google-search');
     const shelfIdsInput = document.getElementById('setting-shelf-ids');
-    const cameraToggle = document.getElementById('setting-camera-to-ai');
     const interimToggle = document.getElementById('setting-enable-interim');
     const interimPhrasesInput = document.getElementById('setting-interim-phrases');
 
@@ -675,7 +672,6 @@ async function saveSettings() {
             .map(s => s.trim())
             .filter(s => s.length > 0);
     }
-    if (cameraToggle) updates.enable_camera_to_ai = cameraToggle.checked;
     if (interimToggle) updates.enable_interim_response = interimToggle.checked;
 
     const robotIpInput = document.getElementById('setting-robot-ip');

@@ -22,9 +22,9 @@ class GeminiLiveSession:
         self.client_ws = client_ws
         self.gemini_ws = None
         self._receive_task = None
-        self._camera_task = None
         self._closed = False
         self._session_id = uuid.uuid4().hex[:12]
+        self._cancelled_fc_ids: set = set()  # Track cancelled tool call IDs
 
     async def connect(self):
         settings = settings_service.get_all()
@@ -68,6 +68,7 @@ class GeminiLiveSession:
             for f in all_decls if f.get("enabled", True)
         ]
         enable_google_search = settings.get("live_enable_google_search", False)
+        auto_interrupt = settings.get("live_auto_interrupt", True)
 
         live_temperature = _clamp(settings.get("live_temperature", 1.0), 0.0, 2.0, 1.0)
         live_max_output_tokens = _clamp(settings.get("live_max_output_tokens", 8192), 1, 65536, 8192, int)
@@ -111,7 +112,18 @@ class GeminiLiveSession:
                     "parts": [{"text": system_prompt}]
                 },
                 "tools": tools,
+                "contextWindowCompression": {
+                    "slidingWindow": {},
+                    "triggerTokens": 25600,
+                },
             }
+
+            # When auto-interrupt is off (exhibition/noisy environment),
+            # tell Gemini server to NOT interrupt model output on detected speech.
+            if not auto_interrupt:
+                setup_config["realtimeInputConfig"] = {
+                    "activityHandling": "NO_INTERRUPTION",
+                }
 
             setup_msg = {"setup": setup_config}
 
@@ -147,10 +159,6 @@ class GeminiLiveSession:
         # Start receiving from Gemini
         self._receive_task = asyncio.create_task(self._receive_from_gemini())
 
-        # Start camera streaming if enabled
-        if settings.get("enable_camera_to_ai", False):
-            self._camera_task = asyncio.create_task(self._stream_camera())
-
         return True
 
     async def send_text(self, text: str):
@@ -177,28 +185,6 @@ class GeminiLiveSession:
             }
         }
         await self.gemini_ws.send(json.dumps(msg))
-
-    async def _stream_camera(self):
-        """Periodically send camera frames to Gemini from CameraStreamer."""
-        try:
-            while not self._closed and self.gemini_ws:
-                try:
-                    frame = robot_manager.get_camera_frame()
-                    if frame and frame.get("ok") and frame.get("image_base64"):
-                        msg = {
-                            "realtimeInput": {
-                                "video": {
-                                    "mimeType": "image/jpeg",
-                                    "data": frame["image_base64"],
-                                }
-                            }
-                        }
-                        await self.gemini_ws.send(json.dumps(msg))
-                except Exception as e:
-                    print(f"Camera stream error: {e}")
-                await asyncio.sleep(2)
-        except asyncio.CancelledError:
-            pass
 
     async def _receive_from_gemini(self):
         """Receive messages from Gemini and forward/process them."""
@@ -255,9 +241,11 @@ class GeminiLiveSession:
 
             # VAD interruption — user started speaking while model was generating
             if content.get("interrupted", False):
+                print(f"[Live] >>> INTERRUPTED by VAD")
                 await self._send_to_client({"type": "interrupted"})
 
             if content.get("turnComplete", False):
+                print(f"[Live] >>> turnComplete")
                 await self._send_to_client({"type": "turn_complete"})
 
         # Handle toolCall
@@ -314,7 +302,10 @@ class GeminiLiveSession:
                         ]
                     }
                 }
-                if self.gemini_ws and not self._closed:
+                if fn_id in self._cancelled_fc_ids:
+                    self._cancelled_fc_ids.discard(fn_id)
+                    print(f"[Live] FC {fn_name} total: {time.monotonic()-t_start:.1f}s, SKIPPED — cancelled")
+                elif self.gemini_ws and not self._closed:
                     await self.gemini_ws.send(json.dumps(tool_response))
                     print(f"[Live] FC {fn_name} total: {time.monotonic()-t_start:.1f}s, toolResponse sent")
                 else:
@@ -322,7 +313,13 @@ class GeminiLiveSession:
 
         # Handle toolCallCancellation
         elif "toolCallCancellation" in msg:
-            ids = [fc.get("id", "?") for fc in msg["toolCallCancellation"].get("ids", [])]
+            raw_ids = msg["toolCallCancellation"].get("ids", [])
+            # ids can be a list of strings or a list of dicts
+            ids = [
+                (i.get("id", "?") if isinstance(i, dict) else str(i))
+                for i in raw_ids
+            ]
+            self._cancelled_fc_ids.update(ids)
             print(f"[Live] toolCallCancellation: ids={ids}")
             await self._send_to_client({
                 "type": "status",
@@ -421,9 +418,6 @@ class GeminiLiveSession:
         if self._receive_task:
             self._receive_task.cancel()
             self._receive_task = None
-        if self._camera_task:
-            self._camera_task.cancel()
-            self._camera_task = None
         if self.gemini_ws:
             try:
                 await self.gemini_ws.close()
@@ -438,8 +432,6 @@ class GeminiLiveSession:
         self._closed = True
         if self._receive_task:
             self._receive_task.cancel()
-        if self._camera_task:
-            self._camera_task.cancel()
         if self.gemini_ws:
             try:
                 await self.gemini_ws.close()

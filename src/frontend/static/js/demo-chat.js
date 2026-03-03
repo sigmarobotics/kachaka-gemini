@@ -189,6 +189,12 @@ export function stopPlayback() {
     nextPlayTime = 0;
 }
 
+/** Returns milliseconds until all scheduled audio finishes playing. */
+export function getPlaybackRemainingMs() {
+    if (!playbackCtx) return 0;
+    return Math.max(0, (nextPlayTime - playbackCtx.currentTime) * 1000);
+}
+
 // ─── Amplitude callbacks ─────────────────────────────
 export function setOnPlaybackAmplitude(cb) {
     onPlaybackAmplitude = cb;

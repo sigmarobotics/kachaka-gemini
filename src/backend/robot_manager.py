@@ -324,6 +324,7 @@ class RobotManager:
             "check_crowd": self._fc_check_crowd,
             "notify_staff": self._fc_notify_staff,
             "deliver_drink": self._fc_deliver_drink,
+            "return_drink": self._fc_return_drink,
         }
         handler = dispatch.get(name)
         if not handler:
@@ -438,18 +439,23 @@ class RobotManager:
         return {"ok": True, "history": summaries}
 
     def _fc_check_crowd(self, args: dict) -> dict:
-        location_name = args.get("location_name", "")
-        if not location_name:
-            return {"ok": False, "error": "location_name is required"}
-        # Move to location first
-        matched = self._resolve_location(location_name)
-        if not matched:
-            locations = self.get_locations()
-            return {"ok": False, "error": f"找不到地點: {location_name}",
-                    "available": [l["name"] for l in locations]}
+        # Support both location_id (direct ID like "L01") and location_name (fuzzy match)
+        location_id = args.get("location_id", "") or args.get("location_name", "")
+        if not location_id:
+            return {"ok": False, "error": "location_id or location_name is required"}
         if not self._ctrl:
             return {"ok": False, "error": "Robot not connected"}
-        move_result = self._ctrl.move_to_location(matched["id"], timeout=120)
+        # If it looks like an ID (e.g. "L01"), use directly; otherwise fuzzy-match
+        if location_id.startswith("L") and location_id[1:].isdigit():
+            move_result = self._ctrl.move_to_location(location_id, timeout=120)
+        else:
+            matched = self._resolve_location(location_id)
+            if not matched:
+                locations = self.get_locations()
+                return {"ok": False, "error": f"找不到地點: {location_id}",
+                        "available": [l["name"] for l in locations]}
+            location_id = matched["id"]
+            move_result = self._ctrl.move_to_location(location_id, timeout=120)
         if not move_result.get("ok"):
             return move_result
         # Capture and analyze
@@ -480,23 +486,40 @@ class RobotManager:
             ],
         )
         analysis = response.text
-        # Telegram notification (if configured)
+        # Telegram notification with photo (if configured)
         chat_id = settings_service.get("telegram_chat_id", "")
         token = settings_service.get("telegram_bot_token", "")
-        crowd_notify = settings_service.get("crowd_notify_enabled", True)
+        crowd_notify = settings_service.get("crowd_telegram_notify", True)
         if chat_id and token and crowd_notify:
             try:
                 import urllib.request
-                tg_url = f"https://api.telegram.org/bot{token}/sendMessage"
-                tg_text = f"📊 人潮檢查 — {location_name}\n\n{analysis}"
-                payload = json.dumps({"chat_id": chat_id, "text": tg_text})
-                req = urllib.request.Request(tg_url, data=payload.encode(), headers={"Content-Type": "application/json"})
-                urllib.request.urlopen(req, timeout=10)
+                import uuid as _uuid
+                caption = f"📊 人潮檢查 — {location_id}\n\n{analysis}"
+                boundary = _uuid.uuid4().hex
+                body_parts = []
+                body_parts.append(
+                    f'--{boundary}\r\nContent-Disposition: form-data; name="chat_id"\r\n\r\n{chat_id}'.encode()
+                )
+                body_parts.append(
+                    f'--{boundary}\r\nContent-Disposition: form-data; name="caption"\r\n\r\n{caption[:1024]}'.encode()
+                )
+                body_parts.append(
+                    f'--{boundary}\r\nContent-Disposition: form-data; name="photo"; filename="crowd.jpg"\r\nContent-Type: image/jpeg\r\n\r\n'.encode()
+                    + jpeg
+                )
+                body_parts.append(f'--{boundary}--\r\n'.encode())
+                body = b'\r\n'.join(body_parts)
+                req = urllib.request.Request(
+                    f"https://api.telegram.org/bot{token}/sendPhoto",
+                    data=body,
+                    headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+                )
+                urllib.request.urlopen(req, timeout=15)
             except Exception as e:
-                print(f"[check_crowd] Telegram notify failed: {e}")
+                print(f"[check_crowd] Telegram photo notify failed: {e}")
         # Return home
         self._ctrl.return_home(timeout=120)
-        return {"ok": True, "analysis": analysis, "location": location_name}
+        return {"ok": True, "analysis": analysis, "location": location_id}
 
     def _fc_notify_staff(self, args: dict) -> dict:
         message = args.get("message", "")
@@ -518,23 +541,18 @@ class RobotManager:
         if not self._ctrl:
             return {"ok": False, "error": "Robot not connected"}
         shelf_id = settings_service.get("drink_shelf_id", "S01")
-        shelf_home = settings_service.get("drink_shelf_home", "")
-        destination_id = args.get("destination_id", "")
-        if not destination_id:
-            return {"ok": False, "error": "destination_id is required"}
-        # Move shelf to destination (destination_id is a location ID like L01)
-        result = self._ctrl.move_shelf(shelf_id, destination_id, timeout=120)
+        destination_id = settings_service.get("drink_shelf_home", "L01")
+        return self._ctrl.move_shelf(shelf_id, destination_id, timeout=120)
+
+    def _fc_return_drink(self, args: dict) -> dict:
+        if not self._ctrl:
+            return {"ok": False, "error": "Robot not connected"}
+        shelf_id = settings_service.get("drink_shelf_id", "S01")
+        result = self._ctrl.return_shelf(shelf_id, timeout=60)
         if not result.get("ok"):
             return result
-        # Dwell at destination
-        dwell_time = settings_service.get("guide_dwell_time", 30)
-        time.sleep(dwell_time)
-        # Return shelf to its home
-        if shelf_home:
-            self._ctrl.return_shelf(shelf_id, timeout=60)
-        # Return robot home
-        self._ctrl.return_home()
-        return {"ok": True, "message": f"飲料已送達 {destination_id}"}
+        self._ctrl.return_home(timeout=120)
+        return {"ok": True, "message": "飲料架已歸位，機器人返回充電座"}
 
     # ── Auto-connect on startup ───────────────────────────────────
 
