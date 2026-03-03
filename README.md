@@ -373,4 +373,6 @@ The Docker image includes a health check (`/api/state`), runs on Python 3.12-sli
 
 ## License
 
-Private project -- not open source.
+This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
+
+Copyright 2026 Sigma Robotics
