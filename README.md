@@ -1,78 +1,111 @@
-# Kachaka + Gemini Live
+# Kachaka + Gemini
 
-A web interface that connects a [Kachaka](https://kachaka.life/) robot to Google's Gemini API, enabling voice and text conversations with function-calling capabilities for robot control.
+A web interface connecting a [Kachaka](https://kachaka.life/) mobile robot to Google's Gemini API for voice and text conversations with real-time function-calling robot control. Includes a Telegram bot bridge and an autonomous patrol inspection system with AI-powered visual analysis.
 
 ## Features
 
-- **Dual API modes** — Text API (stateless, multi-turn REST) and Live API (real-time bidirectional WebSocket with audio)
-- **Voice interaction** — PCM audio capture (16 kHz) via AudioWorklet, gapless playback at 24 kHz, configurable TTS voice
-- **Robot control via function calling** — Gemini autonomously calls functions to move the robot, transport shelves, query status, and capture camera images
-- **Google Search grounding** — Optional web search integration for up-to-date answers; handles model-level incompatibilities (e.g. `gemini-3-flash-preview` Google Search + function calling conflict) via dedicated API fallback
-- **Interactive map** — Canvas-rendered floor map with click-to-move and drag-to-set-pose, real-time pose tracking
-- **Front camera** — MJPEG streaming endpoint; optional continuous camera-to-AI feed (Live API)
-- **Settings UI** — Three-tab settings panel (General / Text API / Live API) with graphical function declaration editor, system instruction accordion, generation parameter sliders, and safety settings
-- **Chat management** — Clear conversation history and export chat as JSON
-- **Interim response** — Pre-generated TTS audio clips played during function call execution for seamless UX
-- **Token tracking** — SQLite-backed per-session and daily token usage statistics
+- **Dual API modes** -- Text API (multi-turn REST with `google-genai` SDK) and Live API (real-time bidirectional WebSocket with native audio via `BidiGenerateContent`)
+- **Voice interaction** -- PCM audio capture (16 kHz) via AudioWorklet, gapless playback at 24 kHz, configurable TTS voice (Aoede, Puck, Charon, Kore, Fenrir)
+- **Robot control via function calling** -- Gemini autonomously calls 13 functions: navigation, shelf transport, camera capture, patrol, crowd checking, drink delivery, staff notification, and more
+- **Per-function enable/disable** -- Graphical card-based function declaration editor with individual toggle switches
+- **Google Search grounding** -- Optional web search integration; handles model-level incompatibilities (e.g. `gemini-3-flash-preview` Google Search + function calling conflict) via a dedicated API workaround
+- **Interactive map** -- Canvas-rendered floor map with click-to-move, drag-to-set-pose, real-time robot pose tracking
+- **Front camera** -- MJPEG streaming endpoint; two-stage camera analysis for Live API (image forwarded to Text API model since Live API `toolResponse` does not support multimodal data)
+- **Autonomous patrol** -- Multi-point patrol with Gemini VLM inspection per checkpoint, structured OK/NG classification, AI summary report, and PDF export
+- **Telegram bot bridge** -- Per-chat Gemini sessions, photo analysis, patrol completion notifications with PDF attachment
+- **Gemini Files API** -- Upload documents/images to Gemini for context injection into Text API conversations, with expiry tracking and re-upload
+- **Settings profiles** -- Save/load/delete named setting snapshots for different deployment scenarios
+- **Exhibition mode** -- NO_INTERRUPTION activity handling, mic muting during AI speech, configurable quick action buttons, customizable title
+- **Context window compression** -- Sliding window compression for Live API sessions to handle long conversations
+- **Interim response** -- Pre-generated TTS audio clips played during function call execution for seamless UX
+- **Token tracking** -- SQLite-backed per-session and daily token usage statistics
 
-## Architecture
+## Architecture Overview
 
+```mermaid
+graph TB
+    subgraph Browser["Browser (Vanilla JS ES Modules)"]
+        APP[app.js<br/>Entry + Tab Switching]
+        CHAT[demo-chat.js<br/>WebSocket + Audio]
+        MAP[map.js<br/>Canvas Map + Click-to-Move]
+        SETTINGS[settings.js<br/>Settings UI + FC Editor]
+        FILES_JS[files.js<br/>File Management UI]
+        VOICE[demo-voice.js<br/>Waveform Overlay]
+        PCM[pcm-processor.js<br/>AudioWorklet 16kHz]
+    end
+
+    subgraph FastAPI["FastAPI Backend (Python 3.12)"]
+        MAIN[main.py<br/>Routes + WebSocket + MJPEG]
+        LIVE[gemini_live_service.py<br/>Live API Session]
+        TEXT[gemini_text_service.py<br/>Text API Session]
+        RMGR[robot_manager.py<br/>kachaka_core Facade]
+        PATROL[patrol_service.py<br/>Autonomous Patrol]
+        TELEGRAM[telegram_service.py<br/>Telegram Bot Bridge]
+        FSVC[file_service.py<br/>Gemini Files API]
+        REPORT[report_service.py<br/>PDF Generation]
+        SETTINGS_SVC[settings_service.py<br/>JSON Persistence]
+        TOKEN[token_service.py<br/>SQLite Token Tracking]
+        CONFIG[config.py<br/>Defaults + FC Declarations]
+    end
+
+    subgraph External["External Services"]
+        GEMINI_TEXT[Gemini Text API<br/>generateContent]
+        GEMINI_LIVE[Gemini Live API<br/>BidiGenerateContent]
+        GEMINI_FILES[Gemini Files API<br/>Upload/Delete]
+        TG_API[Telegram Bot API]
+    end
+
+    ROBOT[Kachaka Robot<br/>gRPC :26400]
+
+    APP --> CHAT
+    APP --> MAP
+    APP --> SETTINGS
+    APP --> FILES_JS
+    APP --> VOICE
+    CHAT --> PCM
+
+    Browser -- "WebSocket /ws/chat" --> MAIN
+    Browser -- "REST /api/*" --> MAIN
+
+    MAIN --> LIVE
+    MAIN --> TEXT
+    MAIN --> RMGR
+    MAIN --> PATROL
+    MAIN --> FSVC
+
+    LIVE -- "WebSocket" --> GEMINI_LIVE
+    LIVE -- "generateContent<br/>(camera analysis)" --> GEMINI_TEXT
+    TEXT -- "generateContent" --> GEMINI_TEXT
+    PATROL -- "generateContent<br/>(VLM inspection)" --> GEMINI_TEXT
+    FSVC --> GEMINI_FILES
+    TELEGRAM -- "polling" --> TG_API
+    TELEGRAM --> TEXT
+
+    RMGR -- "gRPC" --> ROBOT
+
+    style Browser fill:#1a1a2e,stroke:#b8860b,color:#e0e0e0
+    style FastAPI fill:#16213e,stroke:#b8860b,color:#e0e0e0
+    style External fill:#0f3460,stroke:#b8860b,color:#e0e0e0
 ```
-Browser (ES modules)
-  +-- app.js           Entry point, tab switching
-  +-- chat.js          WebSocket client, audio capture/playback, interim response
-  +-- map.js           Canvas map rendering, coordinate transforms, click-to-move
-  +-- settings.js      Settings UI bindings, function editor, import/export
-  +-- state.js         Shared reactive state (robot pose, map info)
-  +-- pcm-processor.js AudioWorklet processor (16 kHz PCM capture)
-
-         | WebSocket /ws/chat
-         v
-
-FastAPI backend (uvicorn)
-  +-- main.py                 Routes, WebSocket handler, MJPEG camera stream
-  +-- gemini_live_service.py  Gemini Live API (BidiGenerateContent) WebSocket session
-  +-- gemini_text_service.py  Gemini Text API (generateContent) multi-turn session
-  +-- robot_service.py        Kachaka gRPC client with background state polling
-  +-- settings_service.py     JSON file-based settings persistence (data/settings.json)
-  +-- token_service.py        SQLite token usage tracking (data/tokens.db)
-  +-- config.py               Default settings, function declarations, persona, knowledge base
-
-         | gRPC :26400
-         v
-
-Kachaka Robot
-```
-
-### Data Flow
-
-1. User opens the web UI and enters a Gemini API key in **Settings > General**
-2. Clicking **Connect** in the Chat tab opens a WebSocket to `/ws/chat`
-3. The backend creates either a `GeminiTextSession` or `GeminiLiveSession` based on the configured API mode
-4. User messages (text or audio) are forwarded to the Gemini API
-5. Gemini responses (text, audio, function calls) are relayed back to the browser
-6. Function calls (e.g. `move_to_location`) are executed on the Kachaka robot via gRPC and results returned to Gemini for follow-up
 
 ## Quick Start
 
 ### Prerequisites
 
-- Docker & Docker Compose
+- Docker and Docker Compose
 - A Gemini API key ([Google AI Studio](https://aistudio.google.com/apikey))
 - A Kachaka robot on the same network (optional -- the app runs without one)
 
 ### Run
 
 ```bash
-# Set your robot's IP (default: 192.168.50.133)
+# Set your robot's IP (default: 192.168.50.133:26400)
 export ROBOT_IP=192.168.50.133:26400
 
 docker compose up -d
 ```
 
-Open **http://localhost:9000** in a browser.
-
-Enter your Gemini API key in **Settings > General**, then click **Connect** in the Chat tab.
+Open **http://localhost:9000** in a browser. Enter your Gemini API key in **Settings > General**, then return to the **Demo** tab -- the WebSocket auto-connects to Gemini on page load.
 
 ### Development
 
@@ -86,284 +119,257 @@ docker compose up -d --build
 ### Multi-arch Build
 
 ```bash
-./build-multiarch.sh            # builds for amd64 + arm64
-./build-multiarch.sh myimage v2 # custom image name and tag
+./build-multiarch.sh                # builds for amd64 + arm64
+./build-multiarch.sh myimage v2     # custom image name and tag
 ```
+
+## Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| Backend | Python 3.12, FastAPI, Uvicorn |
+| Frontend | Vanilla JavaScript (ES modules), Jinja2 templates, CSS |
+| AI | Google Gemini API (`google-genai` SDK), Live API (raw WebSocket) |
+| Robot | `kachaka-sdk-toolkit` (`kachaka_core`), `kachaka-api` (gRPC) |
+| Database | SQLite (WAL mode) for tokens and patrol data |
+| Messaging | `python-telegram-bot` for Telegram bridge |
+| Reports | ReportLab (PDF), CJK font support (WenQuanYi Zen Hei) |
+| Vision | Pillow, OpenCV (headless), Pydantic (structured VLM output) |
+| Container | Docker, multi-arch (amd64/arm64) |
 
 ## Project Structure
 
 ```
 kachaka-gemini/
-+-- docker-compose.yml
-+-- Dockerfile
-+-- build-multiarch.sh
-+-- data/                      # Runtime data (gitignored)
-|   +-- settings.json          # Persisted settings
-|   +-- tokens.db              # Token usage database
-+-- docs/
-|   +-- google-search-function-calling.md
-|   +-- plans/                 # Design docs and implementation plans
-+-- src/
-    +-- backend/
-    |   +-- main.py            # FastAPI routes + WebSocket handler
-    |   +-- config.py          # Defaults, function declarations, persona
-    |   +-- gemini_live_service.py   # Live API (BidiGenerateContent) session
-    |   +-- gemini_text_service.py   # Text API (generateContent) session
-    |   +-- robot_service.py   # Kachaka gRPC client + background polling
-    |   +-- settings_service.py      # JSON settings persistence
-    |   +-- token_service.py   # SQLite token tracking
-    |   +-- requirements.txt
-    +-- frontend/
-        +-- templates/
-        |   +-- index.html     # Single-page app template
-        +-- static/
-            +-- css/style.css
-            +-- js/
-            |   +-- app.js           # Entry point, tab switching
-            |   +-- chat.js          # WebSocket chat + audio
-            |   +-- map.js           # Canvas map rendering
-            |   +-- settings.js      # Settings UI logic
-            |   +-- state.js         # Shared state
-            |   +-- pcm-processor.js # AudioWorklet processor
-            +-- favicon.png
+|-- Dockerfile
+|-- docker-compose.yml
+|-- build-multiarch.sh
+|-- CLAUDE.md                         # Project conventions for Claude Code
+|-- data/                             # Runtime data (gitignored)
+|   |-- settings.json                 # Persisted settings
+|   |-- tokens.db                     # Token usage database
+|   |-- patrol.db                     # Patrol runs + inspection results
+|   |-- files.json                    # Gemini Files API metadata
+|   |-- uploads/                      # Local file copies for Gemini Files API
+|   |-- profiles/                     # Named settings profiles
+|   `-- report/
+|       |-- images/                   # Patrol inspection images
+|       `-- video/                    # Patrol video recordings
+|-- docs/
+|   |-- architecture.md               # Detailed architecture documentation
+|   `-- google-search-function-calling.md
+`-- src/
+    |-- backend/
+    |   |-- main.py                   # FastAPI routes + WebSocket handler + MJPEG
+    |   |-- config.py                 # Defaults, function declarations, persona, knowledge base
+    |   |-- gemini_live_service.py    # Live API (BidiGenerateContent) WebSocket session
+    |   |-- gemini_text_service.py    # Text API (generateContent) multi-turn session
+    |   |-- robot_manager.py          # kachaka_core facade (connection, commands, camera)
+    |   |-- patrol_service.py         # Autonomous multi-point patrol with VLM inspection
+    |   |-- patrol_db.py              # SQLite patrol runs + inspection results
+    |   |-- telegram_service.py       # Telegram bot bridge (per-chat sessions)
+    |   |-- file_service.py           # Gemini Files API lifecycle management
+    |   |-- report_service.py         # PDF report generation + video analysis
+    |   |-- frame_hub.py              # Centralized camera frame access
+    |   |-- profile_service.py        # Named settings profile CRUD
+    |   |-- settings_service.py       # JSON settings persistence + migration
+    |   |-- token_service.py          # SQLite token usage tracking
+    |   |-- requirements.txt
+    |   `-- fonts/                    # Optional CJK font overrides
+    `-- frontend/
+        |-- templates/
+        |   |-- index.html            # Main SPA template
+        |   `-- demo-patrol.html      # Standalone patrol history page
+        `-- static/
+            |-- css/
+            |   |-- style.css         # Main stylesheet
+            |   `-- demo-patrol.css   # Patrol page styles
+            |-- js/
+            |   |-- app.js            # Entry point, tab switching, message handling
+            |   |-- demo-chat.js      # WebSocket client, audio capture/playback
+            |   |-- demo-voice.js     # Waveform overlay (listening/speaking)
+            |   |-- demo-status.js    # Robot status polling, connection light
+            |   |-- demo-patrol.js    # Patrol UI (start/cancel/history)
+            |   |-- demo-patrol-page.js # Standalone patrol dashboard (history/reports/tokens)
+            |   |-- map.js            # Canvas map rendering, coordinate transforms
+            |   |-- settings.js       # Settings UI, FC editor, import/export
+            |   |-- files.js          # File management UI (upload/toggle/delete)
+            |   |-- state.js          # Shared reactive state
+            |   `-- pcm-processor.js  # AudioWorklet processor (16kHz PCM)
+            `-- favicon.png
 ```
 
-## API Endpoints
+## API Reference
 
-### REST
+### REST Endpoints
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/` | Web UI |
+| `GET` | `/` | Web UI (main SPA) |
+| `GET` | `/demo/patrol` | Standalone patrol history page |
+| **Robot** | | |
 | `GET` | `/api/state` | Robot state (battery, pose, map info) |
 | `GET` | `/api/map` | Floor map PNG |
 | `GET` | `/api/camera/front` | MJPEG camera stream |
 | `GET` | `/api/locations` | Registered locations |
 | `GET` | `/api/shelves` | Registered shelves |
-| `GET` | `/api/settings` | Current settings (API key masked) |
-| `GET` | `/api/settings/defaults` | Default settings |
-| `POST` | `/api/settings` | Update settings |
-| `GET` | `/api/models?mode=live\|text` | Query available Gemini models |
-| `GET` | `/api/token_usage` | Token usage summary |
-| `POST` | `/api/token_usage/reset` | Reset token counters |
 | `POST` | `/api/move` | Move robot to coordinates `{x, y, theta}` |
 | `POST` | `/api/cancel_command` | Cancel current robot command |
 | `POST` | `/api/return_home` | Return robot to charging dock |
 | `POST` | `/api/manual_control` | Manual drive `{direction: forward\|backward\|left\|right}` |
+| `POST` | `/api/robot/connect` | Connect to robot `{ip}` |
+| `POST` | `/api/robot/disconnect` | Disconnect from robot |
+| `GET` | `/api/robot/status` | Connection status |
+| **Settings** | | |
+| `GET` | `/api/settings` | Current settings (API key masked) |
+| `GET` | `/api/settings/defaults` | Default settings |
+| `POST` | `/api/settings` | Update settings |
+| `GET` | `/api/models?mode=live\|text` | Query available Gemini models |
+| **Profiles** | | |
+| `GET` | `/api/profiles` | List saved profiles |
+| `POST` | `/api/profiles` | Save current settings as profile `{name}` |
+| `POST` | `/api/profiles/load` | Load a named profile `{name}` |
+| `DELETE` | `/api/profiles/{name}` | Delete a profile |
+| **Files** | | |
+| `GET` | `/api/files` | List uploaded files |
+| `POST` | `/api/files/upload` | Upload file to Gemini Files API |
+| `DELETE` | `/api/files/{file_id}` | Delete a file |
+| `PATCH` | `/api/files/{file_id}/toggle` | Enable/disable file `{enabled}` |
+| `POST` | `/api/files/{file_id}/reupload` | Re-upload expired file |
+| **Tokens** | | |
+| `GET` | `/api/token_usage` | Token usage summary (all-time + today) |
+| `POST` | `/api/token_usage/reset` | Reset token counters |
+| **Patrol** | | |
+| `GET` | `/api/patrol/status` | Current patrol status and progress |
+| `POST` | `/api/patrol/start` | Start patrol `{points?}` |
+| `POST` | `/api/patrol/cancel` | Cancel running patrol |
+| `GET` | `/api/patrol/runs` | Patrol run history `?limit=20&offset=0` |
+| `GET` | `/api/patrol/runs/{run_id}` | Single run details + inspections |
+| `GET` | `/api/patrol/runs/{run_id}/pdf` | Download patrol report PDF |
+| `GET` | `/api/patrol/report/image/{path}` | Serve inspection image |
+| `GET` | `/api/patrol/report/video/{filename}` | Serve patrol video |
+| `GET` | `/api/patrol/token_stats` | Daily patrol token usage |
+| `POST` | `/api/patrol/analyze` | Generate AI analysis report for date range |
+| **Audio** | | |
 | `POST` | `/api/generate_interim_audio` | Pre-generate TTS clips for interim responses |
 | `GET` | `/api/interim_audio` | Retrieve generated interim audio data |
 
 ### WebSocket `/ws/chat`
 
-| Client -> Server | Description |
-|------------------|-------------|
-| `{type: "connect"}` | Open Gemini session (mode determined by `api_mode` setting) |
+**Client to Server:**
+
+| Message | Description |
+|---------|-------------|
+| `{type: "connect"}` | Open Gemini session (mode from `api_mode` setting) |
 | `{type: "disconnect"}` | Close Gemini session |
 | `{type: "text", content: "..."}` | Send text message |
 | `{type: "audio", data: "<base64>"}` | Send PCM audio chunk (Live API only) |
-| `{type: "clear_history"}` | Clear conversation history (Text API resets history array; Live API reconnects fresh session) |
+| `{type: "clear_history"}` | Clear conversation history |
+| `{type: "start_patrol"}` | Start patrol via WebSocket |
 
-| Server -> Client | Description |
-|------------------|-------------|
-| `{type: "status", message: "...", api_mode?: "text"\|"live"}` | Connection status (includes `api_mode` on connect) |
-| `{type: "text", content: "..."}` | Model text response (streamed incrementally) |
-| `{type: "audio", data: "<base64>"}` | Model audio response (PCM 24 kHz, Live API only) |
+**Server to Client:**
+
+| Message | Description |
+|---------|-------------|
+| `{type: "status", message, api_mode?}` | Connection status |
+| `{type: "text", content}` | Model text response |
+| `{type: "audio", data}` | Model audio response (PCM 24 kHz, Live API only) |
 | `{type: "turn_complete"}` | Model turn finished |
+| `{type: "interrupted"}` | User interrupted AI via VAD |
 | `{type: "function_call", name, args}` | Function call initiated |
-| `{type: "function_result", name, result}` | Function call result |
-| `{type: "function_call_blocked", name, args}` | Function call skipped due to Google Search conflict |
-| `{type: "google_search", sources: [...]}` | Search grounding sources `[{title, uri}]` |
-| `{type: "token_usage", prompt, response, total}` | Token counts for this turn |
-| `{type: "error", message: "..."}` | Error |
-| `{type: "gemini_disconnected", code, reason}` | Server-side Gemini disconnect (triggers auto-reconnect) |
-| `{type: "history_cleared"}` | Confirmation that history was cleared |
-
-## Dual API Mode
-
-### Text API (`api_mode: "text"`)
-
-- Uses `google-genai` SDK's `generate_content` method
-- Maintains conversation history client-side (`_history` list of `types.Content`)
-- Supports multi-turn conversations with function calling
-- Sends camera images as inline `image/jpeg` parts alongside function responses
-- Handles Google Search via a **separate API call** when the model emits a `google_search` function call (workaround for models like `gemini-3-flash-preview` that don't support Google Search + function calling in the same request)
-- Supports safety settings (harassment, hate speech, sexually explicit, dangerous content)
-- Clear history resets the in-memory conversation array
-
-### Live API (`api_mode: "live"`)
-
-- Uses raw WebSocket connection to Gemini's `BidiGenerateContent` endpoint
-- Always returns audio responses (configurable voice)
-- Supports real-time audio input via AudioWorklet (16 kHz PCM)
-- Gapless audio playback scheduling at 24 kHz
-- Optional camera-to-AI streaming (sends JPEG frames every 2 seconds)
-- Supports Google Search as a separate tool alongside function declarations
-- Clear history closes and reopens the Gemini WebSocket session (server-side state is not directly resettable)
+| `{type: "function_result", name, result}` | Function call completed |
+| `{type: "function_call_blocked", name, args}` | FC skipped (Google Search conflict) |
+| `{type: "google_search", sources}` | Search grounding sources |
+| `{type: "token_usage", prompt, response, total}` | Token counts |
+| `{type: "error", message}` | Error |
+| `{type: "gemini_disconnected", code, reason}` | Server-side disconnect |
+| `{type: "history_cleared"}` | History clear confirmation |
+| `{type: "thinking"}` | Text API is processing (typing indicator) |
+| `{type: "patrol_started"}` | Patrol started via WebSocket |
 
 ## Function Declarations
 
-The default function declarations (editable in Settings via graphical card editor) expose these robot capabilities to Gemini:
+The 13 default function declarations (editable via Settings UI):
 
-| Function | Description | Parameters |
-|----------|-------------|------------|
-| `move_to_location` | Navigate to a registered location | `location_id` (enum: L01-L05, S01_home, home) |
-| `move_shelf` | Transport a shelf to a destination | `shelf_id` (enum: S01), `destination_id` (enum) |
-| `return_shelf` | Return a shelf to its home position | `shelf_id` (enum: S01) |
-| `get_robot_status` | Query battery level, pose, and command state | (none) |
-| `cancel_command` | Stop the current robot task | (none) |
-| `capture_camera` | Capture and analyze a front camera image | (none) |
+| Function | Description |
+|----------|-------------|
+| `move_to_location` | Navigate to a registered location by ID |
+| `move_shelf` | Transport a shelf to a destination |
+| `return_shelf` | Return a shelf to its home position |
+| `get_robot_status` | Query battery, pose, and command state |
+| `cancel_command` | Stop the current robot task |
+| `capture_camera` | Capture and analyze a front camera image |
+| `guide_to_booth` | Guide a visitor to a booth (move + dwell + return) |
+| `start_patrol` | Start autonomous multi-point patrol |
+| `get_patrol_history` | Query recent patrol run summaries |
+| `check_crowd` | Move to location, capture image, analyze crowd density |
+| `notify_staff` | Send a message to staff via Telegram |
+| `deliver_drink` | Move the drink shelf to a configured destination |
+| `return_drink` | Return the drink shelf and go to charger |
 
-### Graphical Function Editor
-
-The Settings > General tab provides a card-based editor for function declarations:
-
-- **Add/delete functions** with named cards
-- **Parameter table** per function with columns: Name, Type, Description, Enum, Required
-- **Import/export** as JSON files
-- **Reset to default** restores built-in declarations
-- Uses monotonic counter for card indices to prevent collisions after delete-then-add operations
-
-## System Instruction
-
-The system instruction is composed of four configurable sections, concatenated at connect time:
-
-| Section | Setting Key | Description |
-|---------|------------|-------------|
-| **Persona** | `persona` | AI assistant's role, tone, and behavioral rules |
-| **Function Usage Rules** | `static_knowledge` | Function calling decision logic and constraints |
-| **Knowledge Base** | `knowledge_base` | Background knowledge (JSON or text), uploadable from `.json`/`.txt`/`.md` files |
-| **Robot Background Info** | `robot_background_info` | Location/shelf data (can be auto-fetched from robot) |
-
-A `{{CURRENT_TIME}}` placeholder in the persona is replaced with the current UTC+8 timestamp at connection time.
-
-If interim response is enabled (Live API), an additional note is appended instructing the model to call functions silently.
+Each function can be individually enabled/disabled via toggle switches in the FC editor.
 
 ## Configuration
 
 All settings are persisted to `data/settings.json` and editable through the web UI.
 
-### General Settings
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ROBOT_IP` | `192.168.50.133:26400` | Kachaka robot gRPC address |
+
+### Key Settings
 
 | Setting | Default | Description |
 |---------|---------|-------------|
 | `gemini_api_key` | `""` | Google Gemini API key |
 | `api_mode` | `"text"` | `"text"` or `"live"` |
-| `voice_name` | `"Aoede"` | TTS voice for Live API (Puck, Charon, Kore, Fenrir, Aoede) |
-| `persona` | *(built-in)* | AI persona and behavioral rules |
-| `static_knowledge` | *(built-in)* | Function calling constraints |
-| `knowledge_base` | *(built-in JSON)* | Background knowledge document |
-| `robot_background_info` | *(built-in)* | Location/shelf listing for the robot |
-| `function_declarations` | *(6 built-in)* | Editable function declarations array |
-| `shelf_ids` | `[]` | Comma-separated shelf IDs |
-
-### Text API Settings
-
-| Setting | Default | Description |
-|---------|---------|-------------|
 | `text_model` | `"gemini-3-flash-preview"` | Model for Text API |
-| `text_enable_google_search` | `true` | Enable Google Search in Text mode |
-| `text_temperature` | `1.0` | Sampling temperature (0.0 - 2.0) |
-| `text_max_output_tokens` | `8192` | Maximum output tokens (1 - 65536) |
-| `text_top_p` | `0.95` | Nucleus sampling threshold (0.0 - 1.0) |
-| `text_top_k` | `40` | Top-K sampling (1 - 100) |
-| `text_safety_settings` | `{}` | Per-category safety thresholds |
-
-### Live API Settings
-
-| Setting | Default | Description |
-|---------|---------|-------------|
 | `live_model` | `"gemini-2.5-flash-native-audio-preview-12-2025"` | Model for Live API |
-| `live_enable_google_search` | `false` | Enable Google Search in Live mode |
-| `live_temperature` | `1.0` | Sampling temperature (0.0 - 2.0) |
-| `live_max_output_tokens` | `8192` | Maximum output tokens (1 - 65536) |
-| `live_top_p` | `0.95` | Nucleus sampling threshold (0.0 - 1.0) |
-| `live_top_k` | `40` | Top-K sampling (1 - 100) |
-| `enable_camera_to_ai` | `false` | Stream camera frames to Gemini every 2s |
-| `enable_interim_response` | `false` | Play pre-generated audio during function execution |
-| `interim_phrases` | *(built-in map)* | Function name -> spoken text for interim audio |
-| `interim_audio` | `{}` | Pre-generated PCM audio data (base64, generated via Live API) |
+| `text_enable_google_search` | `true` | Enable Google Search (Text mode) |
+| `live_enable_google_search` | `false` | Enable Google Search (Live mode) |
+| `voice_name` | `"Aoede"` | TTS voice for Live API |
+| `live_auto_interrupt` | `true` | Auto VAD (false = exhibition/NO_INTERRUPTION mode) |
+| `robot_ip` | env `ROBOT_IP` | Robot gRPC address (saved to settings) |
+| `telegram_bot_token` | `""` | Telegram bot token (hot-reloaded on change) |
+| `telegram_chat_id` | `""` | Staff notification chat ID |
 
-### Safety Settings (Text API)
+Generation parameters (`temperature`, `max_output_tokens`, `top_p`, `top_k`) and safety settings are configurable per API mode (`text_*` / `live_*` prefixes).
 
-Four harm categories with configurable thresholds:
+## Deployment
 
-| Category | Values |
-|----------|--------|
-| `HARM_CATEGORY_HARASSMENT` | `BLOCK_NONE`, `BLOCK_LOW_AND_ABOVE`, `BLOCK_MEDIUM_AND_ABOVE`, `BLOCK_ONLY_HIGH` |
-| `HARM_CATEGORY_HATE_SPEECH` | *(same)* |
-| `HARM_CATEGORY_SEXUALLY_EXPLICIT` | *(same)* |
-| `HARM_CATEGORY_DANGEROUS_CONTENT` | *(same)* |
+### Docker (recommended)
 
-## Audio Pipeline
+```bash
+# Development with hot-reload
+export ROBOT_IP=192.168.50.133:26400
+docker compose up -d
 
-### Capture (Browser -> Backend -> Gemini)
+# Production (no volume mount, no --reload)
+docker build -t kachaka-gemini-live .
+docker run -d -p 9000:9000 \
+  -e ROBOT_IP=192.168.50.133:26400 \
+  -v $(pwd)/data:/app/data \
+  kachaka-gemini-live
+```
 
-1. `navigator.mediaDevices.getUserMedia` captures mono audio at 16 kHz
-2. **AudioWorklet** (`pcm-processor.js`) extracts raw Float32 samples in 128-sample render quanta
-3. Samples are buffered to ~4096 samples (~256 ms) before encoding
-4. Float32 -> PCM16 conversion, then base64 encoding
-5. Sent as `{type: "audio", data: "<base64>"}` over WebSocket
-6. Backend forwards to Gemini Live API as `realtimeInput.mediaChunks`
+The Docker image includes a health check (`/api/state`), runs on Python 3.12-slim, and installs WenQuanYi Zen Hei fonts for CJK PDF support.
 
-Falls back to deprecated `ScriptProcessorNode` for browsers without AudioWorklet support.
+### Multi-arch
 
-### Playback (Gemini -> Backend -> Browser)
-
-1. Gemini returns audio as base64 PCM16 at 24 kHz
-2. Backend forwards as `{type: "audio", data: "<base64>"}` to the browser
-3. Browser decodes base64 -> Int16Array -> Float32Array
-4. Creates `AudioBuffer` and schedules on a single `AudioContext` timeline
-5. Gapless playback: each chunk is scheduled at `max(now, nextPlayTime)`, preventing gaps between chunks
-6. Playback timeline resets on `turn_complete`
-
-### Interim Response
-
-When enabled, pre-generated audio clips play immediately during function call execution:
-
-1. Configure phrases in **Settings > Live API > Interim Response**
-2. Click **Generate Audio with Live API** to create TTS clips using the same Gemini voice
-3. On function call, the matching clip plays instantly (or falls back to Web Speech API)
-4. `nextPlayTime` is updated so subsequent Gemini audio starts after the interim clip
-
-## Interactive Map
-
-- Canvas-based rendering with real-time robot pose updates (100ms polling)
-- **Click** to move the robot to a point (preserving current heading)
-- **Drag** to set both position and orientation (heading = drag direction)
-- Ghost robot preview shows the target pose during drag
-- Coordinate transform: world coordinates (meters) <-> pixel coordinates using map resolution and origin
-
-## Settings Migration
-
-The settings service automatically migrates old single-mode keys to per-mode keys:
-
-- `gemini_model` -> `text_model` / `live_model` (based on active `api_mode`)
-- `enable_google_search` -> `text_enable_google_search` / `live_enable_google_search`
-
-## Environment Variables
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `ROBOT_IP` | `192.168.50.133:26400` | Kachaka robot IP and gRPC port |
-
-## Dependencies
-
-| Package | Version | Purpose |
-|---------|---------|---------|
-| [FastAPI](https://fastapi.tiangolo.com/) | >= 0.115 | Web framework |
-| [Uvicorn](https://www.uvicorn.org/) | >= 0.34 | ASGI server |
-| [websockets](https://websockets.readthedocs.io/) | >= 14.0 | Gemini Live API WebSocket client |
-| [kachaka-api](https://github.com/pf-robotics/kachaka-api) | >= 3.14 | Kachaka robot gRPC client |
-| [google-genai](https://github.com/googleapis/python-genai) | >= 1.0 | Gemini Text API SDK |
-| [Pillow](https://python-pillow.org/) | >= 10.0 | Image processing |
-| [Jinja2](https://jinja.palletsprojects.com/) | >= 3.1 | HTML templating |
+```bash
+./build-multiarch.sh    # Builds for linux/amd64 and linux/arm64
+```
 
 ## Known Limitations
 
-- **Google Search + Function Calling conflict**: `gemini-3-flash-preview` returns `400 INVALID_ARGUMENT` when both are sent in the same request. The Text API works around this by intercepting `google_search` function calls and executing them via a dedicated API call with only the `GoogleSearch` tool.
-- **Live API safety settings**: `BidiGenerateContent` does not currently support safety settings; the `live_safety_settings` field is reserved for future use.
-- **Live API history**: Server-side conversation state cannot be selectively cleared; clearing history requires reconnecting the entire WebSocket session.
-- **Camera dependency**: Camera features require a connected Kachaka robot; without one, camera endpoints return empty responses.
+- **Google Search + Function Calling conflict**: Some models (e.g. `gemini-3-flash-preview`) return 400 when both are sent in the same request. The Text API works around this by intercepting `google_search` function calls and executing them via a dedicated API call. See [docs/google-search-function-calling.md](docs/google-search-function-calling.md) for details.
+- **Live API camera analysis**: The Live API `toolResponse` does not support multimodal data. Camera images are analyzed via a separate Text API `generateContent` call, and the text result is returned so the Live model reads it aloud.
+- **Live API safety settings**: `BidiGenerateContent` does not currently support safety settings; the `live_safety_settings` field is reserved.
+- **Live API history**: Server-side conversation state cannot be selectively cleared; clearing history requires reconnecting the WebSocket session.
+- **Camera dependency**: Camera features require a connected Kachaka robot.
+- **No tests**: There are no automated tests, linter, or type checker configured.
 
 ## License
 
