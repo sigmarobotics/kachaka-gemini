@@ -48,7 +48,6 @@ export async function loadSettings() {
         const settings = await res.json();
 
         const apiKeyInput = document.getElementById('setting-api-key');
-        const apiModeSelect = document.getElementById('setting-api-mode');
         const textModelInput = document.getElementById('setting-text-model');
         const liveModelInput = document.getElementById('setting-live-model');
         const personaInput = document.getElementById('setting-persona');
@@ -56,14 +55,10 @@ export async function loadSettings() {
         const voiceSelect = document.getElementById('setting-voice');
         const textGoogleSearch = document.getElementById('setting-text-google-search');
         const liveGoogleSearch = document.getElementById('setting-live-google-search');
-        const shelfIdsInput = document.getElementById('setting-shelf-ids');
-        const interimToggle = document.getElementById('setting-enable-interim');
-        const interimPhrasesInput = document.getElementById('setting-interim-phrases');
 
         if (apiKeyInput) apiKeyInput.placeholder = settings.gemini_api_key_masked || 'Enter Gemini API Key';
         const telegramTokenInput = document.getElementById('setting-telegram-token');
         if (telegramTokenInput) telegramTokenInput.placeholder = settings.telegram_bot_token_masked || 'Enter Telegram Bot Token';
-        if (apiModeSelect) apiModeSelect.value = settings.api_mode || 'live';
 
         if (textModelInput) {
             const savedTextModel = settings.text_model || 'gemini-3-flash-preview';
@@ -95,69 +90,47 @@ export async function loadSettings() {
         if (voiceSelect) voiceSelect.value = settings.voice_name || 'Aoede';
         if (textGoogleSearch) textGoogleSearch.checked = settings.text_enable_google_search || false;
         if (liveGoogleSearch) liveGoogleSearch.checked = settings.live_enable_google_search || false;
-        if (shelfIdsInput) shelfIdsInput.value = (settings.shelf_ids || []).join(', ');
         const robotIpInput = document.getElementById('setting-robot-ip');
         if (robotIpInput) robotIpInput.value = settings.robot_ip || '';
 
-        // Robot background info
-        const robotInfoInput = document.getElementById('setting-robot-info');
-        if (robotInfoInput) robotInfoInput.value = settings.robot_background_info || '';
+        // Robot background info — auto-load A* distances
+        loadLocationDistances();
 
         // Function declarations — graphical editor
         const funcDecls = settings.function_declarations || [];
         renderFuncEditor(funcDecls);
 
-        // Interim response
-        if (interimToggle) interimToggle.checked = settings.enable_interim_response || false;
-        if (interimPhrasesInput) {
-            const phrases = settings.interim_phrases || {};
-            interimPhrasesInput.value = JSON.stringify(phrases, null, 2);
-            clearJsonError('interim-phrases-error');
-        }
-
-        // Update interim audio status display
-        updateInterimAudioStatus(settings.interim_audio_keys || []);
-
-        // Patrol settings
-        const patrolSystemPrompt = document.getElementById('patrol-system-prompt');
-        const videoAnalysisPrompt = document.getElementById('video-analysis-prompt');
+        // Exhibition & patrol settings
         const exhibitionTitle = document.getElementById('exhibition-title');
-        const drinkShelfId = document.getElementById('drink-shelf-id');
-        const telegramChatId = document.getElementById('telegram-chat-id');
         const patrolTelegramNotify = document.getElementById('patrol-telegram-notify');
-        const crowdTelegramNotify = document.getElementById('crowd-telegram-notify');
         const liveAutoInterrupt = document.getElementById('live-auto-interrupt');
 
-        if (patrolSystemPrompt) patrolSystemPrompt.value = settings.patrol_system_prompt || '';
-        if (videoAnalysisPrompt) videoAnalysisPrompt.value = settings.video_analysis_prompt || '';
         if (exhibitionTitle) exhibitionTitle.value = settings.exhibition_title || '';
-        if (drinkShelfId) drinkShelfId.value = settings.drink_shelf_id || 'S01';
-        if (telegramChatId) telegramChatId.value = settings.telegram_chat_id || '';
         if (patrolTelegramNotify) patrolTelegramNotify.checked = settings.patrol_telegram_notify !== false;
-        if (crowdTelegramNotify) crowdTelegramNotify.checked = settings.crowd_telegram_notify !== false;
         if (liveAutoInterrupt) liveAutoInterrupt.checked = settings.live_auto_interrupt !== false;
 
-        // Guide & patrol analysis settings
-        const guideDwellTime = document.getElementById('guide-dwell-time');
-        if (guideDwellTime) guideDwellTime.value = settings.guide_dwell_time || 30;
+        // Telegram chat IDs (textarea, one per line)
+        const chatIdsTextarea = document.getElementById('telegram-chat-ids');
+        if (chatIdsTextarea) {
+            const ids = settings.telegram_chat_ids || [];
+            chatIdsTextarea.value = Array.isArray(ids) ? ids.join('\n') : String(ids);
+        }
 
+        // Patrol settings
         const patrolImagePrompt = document.getElementById('patrol-image-prompt');
         if (patrolImagePrompt) patrolImagePrompt.value = settings.patrol_image_prompt || '';
 
-        const patrolVideoEnable = document.getElementById('patrol-video-enable');
-        if (patrolVideoEnable) patrolVideoEnable.checked = !!settings.patrol_video_enable;
+        const inspectDwellTime = document.getElementById('inspect-dwell-time');
+        if (inspectDwellTime) inspectDwellTime.value = settings.inspect_dwell_time || 10;
 
-        const patrolVideoPrompt = document.getElementById('patrol-video-prompt');
-        if (patrolVideoPrompt) patrolVideoPrompt.value = settings.patrol_video_prompt || '';
+        const guideDwellTime = document.getElementById('guide-dwell-time');
+        if (guideDwellTime) guideDwellTime.value = settings.guide_dwell_time || 30;
 
-        // Load patrol model options
-        loadPatrolModelOptions(settings.patrol_model || '');
+        // Load location options for kiosk location
+        loadKioskLocationOptions(settings.kiosk_location || '');
 
-        // Load location options for drink shelf home
-        loadDrinkShelfHomeOptions(settings.drink_shelf_home || '');
-
-        // Load patrol points
-        renderPatrolPoints(settings.patrol_points || []);
+        // Load patrol point checkboxes
+        renderPatrolCheckboxes(settings.patrol_points || []);
 
         // Generation parameters — Text
         const textTemp = document.getElementById('setting-text-temperature');
@@ -292,6 +265,10 @@ async function connectRobot() {
         const data = await res.json();
         if (data.ok) {
             if (statusEl) { statusEl.textContent = `Connected (serial: ${data.serial})`; statusEl.style.color = 'var(--mint)'; }
+            // Refresh patrol checkboxes after connecting
+            _cachedLocations = null;
+            const settings = await (await fetch('/api/settings')).json();
+            renderPatrolCheckboxes(settings.patrol_points || []);
         } else {
             if (statusEl) { statusEl.textContent = `Failed: ${data.error}`; statusEl.style.color = 'var(--danger)'; }
         }
@@ -324,7 +301,7 @@ async function loadRobotStatus() {
             if (statusEl) { statusEl.textContent = 'Not connected'; statusEl.style.color = 'var(--muted)'; }
         }
     } catch (e) {
-        // Silently fail — status will show on next poll
+        // Silently fail
     }
 }
 
@@ -361,12 +338,6 @@ export function initSettings() {
     document.getElementById('upload-func-decl')
         ?.addEventListener('change', uploadFuncDecl);
 
-    // Robot background info fetch buttons
-    document.getElementById('btn-fetch-locations')
-        ?.addEventListener('click', fetchLocations);
-    document.getElementById('btn-fetch-shelves')
-        ?.addEventListener('click', fetchShelves);
-
     // Reset button
     document.getElementById('btn-reset-func-decl')
         ?.addEventListener('click', resetFuncDecl);
@@ -381,14 +352,6 @@ export function initSettings() {
             container.insertAdjacentHTML('beforeend', newCard);
             container.lastElementChild?.classList.add('open');
         });
-
-    // Live JSON validation
-    document.getElementById('setting-interim-phrases')
-        ?.addEventListener('input', () => validateJsonInput('setting-interim-phrases', 'interim-phrases-error', 'object'));
-
-    // Generate interim audio button
-    document.getElementById('btn-generate-interim')
-        ?.addEventListener('click', generateInterimAudio);
 
     // Token usage buttons
     document.getElementById('btn-refresh-tokens')
@@ -416,12 +379,6 @@ export function initSettings() {
             ?.addEventListener('input', () => updateParamDisplay(sliderId, displayId));
     }
 
-    // Patrol settings
-    document.getElementById('btn-query-patrol-models')
-        ?.addEventListener('click', () => queryModels('text', 'patrol-model', 'btn-query-patrol-models'));
-    document.getElementById('btn-add-patrol-point')
-        ?.addEventListener('click', addPatrolPoint);
-
     loadSettings();
 }
 
@@ -440,32 +397,6 @@ function showJsonError(errorElId, msg) {
     if (errEl) {
         errEl.style.display = 'block';
         errEl.textContent = msg;
-    }
-}
-
-function validateJsonInput(textareaId, errorElId, expectedType) {
-    const textarea = document.getElementById(textareaId);
-    if (!textarea) return true;
-    const val = textarea.value.trim();
-    if (!val) {
-        clearJsonError(errorElId);
-        return true;
-    }
-    try {
-        const parsed = JSON.parse(val);
-        if (expectedType === 'array' && !Array.isArray(parsed)) {
-            showJsonError(errorElId, 'Must be a JSON array');
-            return false;
-        }
-        if (expectedType === 'object' && (typeof parsed !== 'object' || Array.isArray(parsed))) {
-            showJsonError(errorElId, 'Must be a JSON object');
-            return false;
-        }
-        clearJsonError(errorElId);
-        return true;
-    } catch (e) {
-        showJsonError(errorElId, `Invalid JSON: ${e.message}`);
-        return false;
     }
 }
 
@@ -629,7 +560,6 @@ window.deleteParamRow = function(btn) {
 
 async function saveSettings() {
     const apiKeyInput = document.getElementById('setting-api-key');
-    const apiModeSelect = document.getElementById('setting-api-mode');
     const textModelInput = document.getElementById('setting-text-model');
     const liveModelInput = document.getElementById('setting-live-model');
     const personaInput = document.getElementById('setting-persona');
@@ -637,15 +567,6 @@ async function saveSettings() {
     const voiceSelect = document.getElementById('setting-voice');
     const textGoogleSearch = document.getElementById('setting-text-google-search');
     const liveGoogleSearch = document.getElementById('setting-live-google-search');
-    const shelfIdsInput = document.getElementById('setting-shelf-ids');
-    const interimToggle = document.getElementById('setting-enable-interim');
-    const interimPhrasesInput = document.getElementById('setting-interim-phrases');
-
-    // Validate JSON fields
-    if (!validateJsonInput('setting-interim-phrases', 'interim-phrases-error', 'object')) {
-        showJsonError('interim-phrases-error', 'Fix JSON errors before saving');
-        return;
-    }
 
     const updates = {};
 
@@ -656,7 +577,6 @@ async function saveSettings() {
     if (telegramTokenInput && telegramTokenInput.value.trim()) {
         updates.telegram_bot_token = telegramTokenInput.value.trim();
     }
-    if (apiModeSelect) updates.api_mode = apiModeSelect.value;
     if (textModelInput) updates.text_model = textModelInput.value.trim();
     if (liveModelInput) updates.live_model = liveModelInput.value.trim();
     if (personaInput) updates.persona = personaInput.value;
@@ -666,34 +586,17 @@ async function saveSettings() {
     if (voiceSelect) updates.voice_name = voiceSelect.value;
     if (textGoogleSearch) updates.text_enable_google_search = textGoogleSearch.checked;
     if (liveGoogleSearch) updates.live_enable_google_search = liveGoogleSearch.checked;
-    if (shelfIdsInput) {
-        updates.shelf_ids = shelfIdsInput.value
-            .split(',')
-            .map(s => s.trim())
-            .filter(s => s.length > 0);
-    }
-    if (interimToggle) updates.enable_interim_response = interimToggle.checked;
 
     const robotIpInput = document.getElementById('setting-robot-ip');
     if (robotIpInput && robotIpInput.value.trim()) {
         updates.robot_ip = robotIpInput.value.trim();
     }
 
-    const robotInfoInput = document.getElementById('setting-robot-info');
-    if (robotInfoInput) updates.robot_background_info = robotInfoInput.value;
+    // robot_background_info is auto-managed ({{AVAILABLE_LOCATIONS}} placeholder)
+    // — not saved from UI
 
     // Function declarations from graphical editor
     updates.function_declarations = collectFuncDeclarations();
-
-    // Parse interim phrases
-    if (interimPhrasesInput && interimPhrasesInput.value.trim()) {
-        try {
-            updates.interim_phrases = JSON.parse(interimPhrasesInput.value.trim());
-        } catch (e) {
-            showJsonError('interim-phrases-error', `Invalid JSON: ${e.message}`);
-            return;
-        }
-    }
 
     // Patrol & Exhibition settings
     Object.assign(updates, collectPatrolSettings());
@@ -761,12 +664,10 @@ function downloadSystemInstruction() {
     const persona = document.getElementById('setting-persona');
     const staticKnowledge = document.getElementById('setting-static-knowledge');
     const knowledgeBase = document.getElementById('setting-knowledge-base');
-    const robotInfo = document.getElementById('setting-robot-info');
     downloadJson({
         persona: persona?.value || '',
         static_knowledge: staticKnowledge?.value || '',
         knowledge_base: knowledgeBase?.value || '',
-        robot_background_info: robotInfo?.value || '',
     }, 'system_instruction.json');
 }
 
@@ -785,11 +686,9 @@ function uploadSystemInstruction(event) {
             const personaEl = document.getElementById('setting-persona');
             const staticEl = document.getElementById('setting-static-knowledge');
             const knowledgeEl = document.getElementById('setting-knowledge-base');
-            const robotInfoEl = document.getElementById('setting-robot-info');
             if (data.persona && personaEl) personaEl.value = data.persona;
             if (data.static_knowledge && staticEl) staticEl.value = data.static_knowledge;
             if (data.knowledge_base != null && knowledgeEl) knowledgeEl.value = typeof data.knowledge_base === 'string' ? data.knowledge_base : JSON.stringify(data.knowledge_base, null, 2);
-            if (data.robot_background_info && robotInfoEl) robotInfoEl.value = data.robot_background_info;
         } catch (err) {
             alert('Invalid JSON file');
         }
@@ -853,7 +752,6 @@ function uploadKnowledgeBase(event) {
             parts.push(`--- ${file.name} ---\n${content}`);
             loaded++;
 
-            // When all files are read, join and set
             if (loaded === files.length) {
                 textarea.value = parts.join('\n\n');
             }
@@ -883,149 +781,33 @@ async function resetFuncDecl() {
     }
 }
 
-// ─── Robot Background Info ───────────────────────────────────────────────────
+// ─── Robot Background Info (A* Distances, read-only) ────────────────────────
 
-async function fetchLocations() {
-    const btn = document.getElementById('btn-fetch-locations');
+async function loadLocationDistances() {
     const textarea = document.getElementById('setting-robot-info');
-    if (!btn || !textarea) return;
+    if (!textarea) return;
 
-    btn.disabled = true;
-    btn.textContent = 'Fetching...';
     try {
         const res = await fetch('/api/locations');
         const data = await res.json();
-        const lines = ['可用地點:'];
+        if (!data || data.length === 0) {
+            textarea.value = '機器人未連線，無法取得地點資訊';
+            return;
+        }
+        const lines = ['可用地點（依 A* 路徑距離排序）：'];
         for (const loc of data) {
-            lines.push(`- ${loc.name} (id: ${loc.id})`);
+            const dist = loc.distance_m != null ? ` (${loc.distance_m}m)` : '';
+            lines.push(`- ${loc.name}${dist}`);
         }
         textarea.value = lines.join('\n');
     } catch (e) {
-        console.error('Failed to fetch locations:', e);
-    } finally {
-        btn.disabled = false;
-        btn.textContent = 'Fetch Locations';
+        console.error('Failed to load location distances:', e);
+        textarea.value = '載入失敗';
     }
 }
 
-async function fetchShelves() {
-    const btn = document.getElementById('btn-fetch-shelves');
-    const textarea = document.getElementById('setting-robot-info');
-    if (!btn || !textarea) return;
+// ─── Patrol Settings (Checkbox-based) ────────────────────────────────────────
 
-    btn.disabled = true;
-    btn.textContent = 'Fetching...';
-    try {
-        const res = await fetch('/api/shelves');
-        const data = await res.json();
-        const lines = ['\n可用貨架:'];
-        for (const shelf of data) {
-            let entry = `- ${shelf.name} (id: ${shelf.id}`;
-            if (shelf.home) entry += `, home: ${shelf.home}`;
-            entry += ')';
-            lines.push(entry);
-        }
-        // Append to existing content
-        const current = textarea.value.trim();
-        textarea.value = current ? current + '\n' + lines.join('\n') : lines.join('\n');
-    } catch (e) {
-        console.error('Failed to fetch shelves:', e);
-    } finally {
-        btn.disabled = false;
-        btn.textContent = 'Fetch Shelves';
-    }
-}
-
-// ─── Interim Audio Generation ────────────────────────────────────────────────
-
-function updateInterimAudioStatus(audioKeys) {
-    const statusEl = document.getElementById('interim-audio-status');
-    if (!statusEl) return;
-
-    if (!audioKeys || audioKeys.length === 0) {
-        statusEl.innerHTML = '<span class="interim-none">No audio generated yet</span>';
-        return;
-    }
-
-    const items = audioKeys.map(k =>
-        `<span class="interim-item">${k}</span>`
-    );
-    statusEl.innerHTML = `<span class="interim-label">Generated:</span> ${items.join(' ')}`;
-}
-
-async function generateInterimAudio() {
-    const phrasesInput = document.getElementById('setting-interim-phrases');
-    const statusEl = document.getElementById('interim-generate-status');
-    const btn = document.getElementById('btn-generate-interim');
-
-    if (!phrasesInput || !btn) return;
-
-    // Validate phrases JSON
-    if (!validateJsonInput('setting-interim-phrases', 'interim-phrases-error', 'object')) {
-        return;
-    }
-
-    let phrases;
-    try {
-        phrases = JSON.parse(phrasesInput.value.trim());
-    } catch (e) {
-        showJsonError('interim-phrases-error', `Invalid JSON: ${e.message}`);
-        return;
-    }
-
-    if (Object.keys(phrases).length === 0) {
-        showJsonError('interim-phrases-error', 'No phrases to generate');
-        return;
-    }
-
-    // Save phrases first
-    await fetch('/api/settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ interim_phrases: phrases }),
-    });
-
-    // Show loading state
-    btn.disabled = true;
-    btn.textContent = 'Generating...';
-    if (statusEl) statusEl.textContent = '';
-
-    try {
-        const res = await fetch('/api/generate_interim_audio', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ phrases }),
-        });
-
-        const data = await res.json();
-
-        if (res.ok) {
-            if (statusEl) {
-                statusEl.textContent = `Generated ${data.generated.length} audio clips`;
-                statusEl.className = 'interim-status success';
-            }
-            await loadSettings();
-        } else {
-            if (statusEl) {
-                statusEl.textContent = `Error: ${data.error}`;
-                statusEl.className = 'interim-status error';
-            }
-        }
-    } catch (e) {
-        console.error('Failed to generate interim audio:', e);
-        if (statusEl) {
-            statusEl.textContent = `Error: ${e.message}`;
-            statusEl.className = 'interim-status error';
-        }
-    } finally {
-        btn.disabled = false;
-        btn.textContent = 'Generate Audio with Live API';
-    }
-}
-
-// ─── Patrol & Exhibition Settings ─────────────────────────────────────────────
-
-// Cached locations list (fetched once per page load)
 let _cachedLocations = null;
 
 async function fetchLocationsList() {
@@ -1040,30 +822,38 @@ async function fetchLocationsList() {
     return _cachedLocations;
 }
 
-async function loadPatrolModelOptions(selectedModel) {
-    const select = document.getElementById('patrol-model');
-    if (!select) return;
+async function renderPatrolCheckboxes(selectedIds) {
+    const container = document.getElementById('patrol-points-checkboxes');
+    if (!container) return;
 
-    // Add empty option for "use text model"
-    if (!select.querySelector('option[value=""]')) {
-        const emptyOpt = document.createElement('option');
-        emptyOpt.value = '';
-        emptyOpt.textContent = '(使用 Text 模型)';
-        select.appendChild(emptyOpt);
+    const locations = await fetchLocationsList();
+    if (locations.length === 0) {
+        container.innerHTML = '<span class="patrol-empty">機器人未連線，無法取得地點</span>';
+        return;
     }
 
-    // Ensure selected model is in the list
-    if (selectedModel && !select.querySelector(`option[value="${selectedModel}"]`)) {
-        const opt = document.createElement('option');
-        opt.value = selectedModel;
-        opt.textContent = selectedModel;
-        select.appendChild(opt);
+    const selectedSet = new Set(Array.isArray(selectedIds) ? selectedIds : []);
+    container.innerHTML = '';
+
+    for (const loc of locations) {
+        const label = document.createElement('label');
+        label.className = 'patrol-checkbox-item';
+        label.innerHTML = `
+            <input type="checkbox" value="${escapeAttr(loc.id)}"
+                   ${selectedSet.has(loc.id) ? 'checked' : ''}>
+            <span>${escapeAttr(loc.name)} <small>(${escapeAttr(loc.id)})</small></span>
+        `;
+        container.appendChild(label);
     }
-    select.value = selectedModel;
 }
 
-async function loadDrinkShelfHomeOptions(selectedLocation) {
-    const select = document.getElementById('drink-shelf-home');
+function collectPatrolPointIds() {
+    const checkboxes = document.querySelectorAll('#patrol-points-checkboxes input[type="checkbox"]:checked');
+    return Array.from(checkboxes).map(cb => cb.value);
+}
+
+async function loadKioskLocationOptions(selectedLocation) {
+    const select = document.getElementById('kiosk-location');
     if (!select) return;
 
     const locations = await fetchLocationsList();
@@ -1080,131 +870,39 @@ async function loadDrinkShelfHomeOptions(selectedLocation) {
     }
 }
 
-function renderPatrolPoints(points) {
-    const container = document.getElementById('patrol-points-list');
-    if (!container) return;
-    container.innerHTML = '';
-
-    for (let i = 0; i < points.length; i++) {
-        const pt = points[i];
-        appendPatrolPointCard(container, pt, i);
-    }
-    window._patrolPointCounter = points.length;
-}
-
-function appendPatrolPointCard(container, pt, index) {
-    const card = document.createElement('div');
-    card.className = 'patrol-point-card';
-    card.dataset.index = index;
-    card.innerHTML = `
-        <div class="patrol-point-header">
-            <span class="patrol-point-label">巡檢點 #${index + 1}</span>
-            <button class="param-delete-btn" onclick="deletePatrolPoint(${index})" title="刪除">DEL</button>
-        </div>
-        <div class="form-group" style="margin-bottom: 6px;">
-            <label>地點</label>
-            <select class="patrol-point-location">
-                <option value="">Loading...</option>
-            </select>
-        </div>
-        <div class="form-group" style="margin-bottom: 6px;">
-            <label>分析提示 (選填)</label>
-            <textarea class="patrol-point-prompt" rows="2" placeholder="此點位的額外分析提示...">${escapeAttr(pt.prompt || '')}</textarea>
-        </div>
-    `;
-    container.appendChild(card);
-
-    // Populate location dropdown asynchronously
-    const locationSelect = card.querySelector('.patrol-point-location');
-    fetchLocationsList().then(locations => {
-        locationSelect.innerHTML = '';
-        for (const loc of locations) {
-            const opt = document.createElement('option');
-            opt.value = loc.id;
-            opt.textContent = `${loc.name} (${loc.id})`;
-            locationSelect.appendChild(opt);
-        }
-        // Set selected value
-        if (pt.location_id) {
-            locationSelect.value = pt.location_id;
-        }
-        // If name matches a location but no id was stored, try matching by name
-        if (!pt.location_id && pt.name) {
-            const match = locations.find(l => l.name === pt.name);
-            if (match) locationSelect.value = match.id;
-        }
-    });
-}
-
-function addPatrolPoint() {
-    const container = document.getElementById('patrol-points-list');
-    if (!container) return;
-    const index = window._patrolPointCounter || 0;
-    appendPatrolPointCard(container, {}, index);
-    window._patrolPointCounter = index + 1;
-}
-
-window.deletePatrolPoint = function(index) {
-    const card = document.querySelector(`.patrol-point-card[data-index="${index}"]`);
-    if (card) card.remove();
-};
-
-function collectPatrolPoints() {
-    const cards = document.querySelectorAll('.patrol-point-card');
-    const result = [];
-    cards.forEach(card => {
-        const locationSelect = card.querySelector('.patrol-point-location');
-        const promptTextarea = card.querySelector('.patrol-point-prompt');
-        const locationId = locationSelect?.value || '';
-        const selectedOption = locationSelect?.selectedOptions[0];
-        const name = selectedOption ? selectedOption.textContent.replace(/\s*\(.*\)$/, '') : '';
-        const prompt = promptTextarea?.value?.trim() || '';
-        if (locationId) {
-            result.push({ name, location_id: locationId, prompt });
-        }
-    });
-    return result;
-}
-
 function collectPatrolSettings() {
     const result = {};
 
-    const patrolModel = document.getElementById('patrol-model');
-    const patrolSystemPrompt = document.getElementById('patrol-system-prompt');
-    const videoAnalysisPrompt = document.getElementById('video-analysis-prompt');
     const exhibitionTitle = document.getElementById('exhibition-title');
-    const drinkShelfId = document.getElementById('drink-shelf-id');
-    const drinkShelfHome = document.getElementById('drink-shelf-home');
-    const telegramChatId = document.getElementById('telegram-chat-id');
+    const kioskLocation = document.getElementById('kiosk-location');
     const patrolTelegramNotify = document.getElementById('patrol-telegram-notify');
-    const crowdTelegramNotify = document.getElementById('crowd-telegram-notify');
     const liveAutoInterrupt = document.getElementById('live-auto-interrupt');
 
-    if (patrolModel) result.patrol_model = patrolModel.value;
-    if (patrolSystemPrompt) result.patrol_system_prompt = patrolSystemPrompt.value;
-    if (videoAnalysisPrompt) result.video_analysis_prompt = videoAnalysisPrompt.value;
     if (exhibitionTitle) result.exhibition_title = exhibitionTitle.value;
-    if (drinkShelfId) result.drink_shelf_id = drinkShelfId.value;
-    if (drinkShelfHome) result.drink_shelf_home = drinkShelfHome.value;
-    if (telegramChatId) result.telegram_chat_id = telegramChatId.value;
+    if (kioskLocation) result.kiosk_location = kioskLocation.value;
     if (patrolTelegramNotify) result.patrol_telegram_notify = patrolTelegramNotify.checked;
-    if (crowdTelegramNotify) result.crowd_telegram_notify = crowdTelegramNotify.checked;
     if (liveAutoInterrupt) result.live_auto_interrupt = liveAutoInterrupt.checked;
-
-    // Guide & patrol analysis settings
-    const guideDwellTime = document.getElementById('guide-dwell-time');
-    if (guideDwellTime) result.guide_dwell_time = parseInt(guideDwellTime.value) || 30;
 
     const patrolImagePrompt = document.getElementById('patrol-image-prompt');
     if (patrolImagePrompt) result.patrol_image_prompt = patrolImagePrompt.value;
 
-    const patrolVideoEnable = document.getElementById('patrol-video-enable');
-    if (patrolVideoEnable) result.patrol_video_enable = patrolVideoEnable.checked;
+    const inspectDwellTime = document.getElementById('inspect-dwell-time');
+    if (inspectDwellTime) result.inspect_dwell_time = parseInt(inspectDwellTime.value) || 10;
 
-    const patrolVideoPrompt = document.getElementById('patrol-video-prompt');
-    if (patrolVideoPrompt) result.patrol_video_prompt = patrolVideoPrompt.value;
+    const guideDwellTime = document.getElementById('guide-dwell-time');
+    if (guideDwellTime) result.guide_dwell_time = parseInt(guideDwellTime.value) || 30;
 
-    result.patrol_points = collectPatrolPoints();
+    // Patrol points as list of location IDs
+    result.patrol_points = collectPatrolPointIds();
+
+    // Telegram chat IDs from textarea (split by newline)
+    const chatIdsTextarea = document.getElementById('telegram-chat-ids');
+    if (chatIdsTextarea) {
+        result.telegram_chat_ids = chatIdsTextarea.value
+            .split('\n')
+            .map(s => s.trim())
+            .filter(s => s.length > 0);
+    }
 
     return result;
 }
@@ -1247,50 +945,41 @@ function setupProfileButtons() {
                 body: JSON.stringify({ name: name.trim() }),
             });
             if (res.ok) {
-                alert(`Profile "${name.trim()}" saved.`);
                 await loadProfileList();
-                document.getElementById('profile-select').value = name.trim();
+                const select = document.getElementById('profile-select');
+                if (select) select.value = name.trim();
             }
         } catch (e) {
-            alert('Failed to save profile.');
+            console.error('Failed to save profile:', e);
         }
     });
 
     if (loadBtn) loadBtn.addEventListener('click', async () => {
         const select = document.getElementById('profile-select');
         const name = select?.value;
-        if (!name) { alert('Select a profile first.'); return; }
-        if (!confirm(`Load profile "${name}"? This will overwrite current settings.`)) return;
+        if (!name) { alert('Select a profile first'); return; }
         try {
             const res = await fetch('/api/profiles/load', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ name }),
             });
-            if (res.ok) {
-                alert(`Profile "${name}" loaded. Reloading page...`);
-                location.reload();
-            }
+            if (res.ok) await loadSettings();
         } catch (e) {
-            alert('Failed to load profile.');
+            console.error('Failed to load profile:', e);
         }
     });
 
     if (deleteBtn) deleteBtn.addEventListener('click', async () => {
         const select = document.getElementById('profile-select');
         const name = select?.value;
-        if (!name) { alert('Select a profile first.'); return; }
+        if (!name) { alert('Select a profile first'); return; }
         if (!confirm(`Delete profile "${name}"?`)) return;
         try {
-            const res = await fetch(`/api/profiles/${encodeURIComponent(name)}`, {
-                method: 'DELETE',
-            });
-            if (res.ok) {
-                alert(`Profile "${name}" deleted.`);
-                await loadProfileList();
-            }
+            const res = await fetch(`/api/profiles/${encodeURIComponent(name)}`, { method: 'DELETE' });
+            if (res.ok) await loadProfileList();
         } catch (e) {
-            alert('Failed to delete profile.');
+            console.error('Failed to delete profile:', e);
         }
     });
 }

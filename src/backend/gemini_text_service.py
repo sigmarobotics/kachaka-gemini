@@ -9,6 +9,7 @@ from google.genai import types
 import base64
 
 from robot_manager import robot_manager
+from location_service import location_service
 import settings_service
 import token_service
 import file_service
@@ -60,14 +61,45 @@ class GeminiTextSession:
         # Inject local time (UTC+8) into {{CURRENT_TIME}} placeholder
         utc8 = timezone(timedelta(hours=8))
         current_time = datetime.now(utc8).strftime("%Y-%m-%d %H:%M:%S")
+        # Inject available locations into system prompt
+        location_enum = location_service.get_location_enum_with_distances()
+        if location_enum:
+            loc_lines = ["可用地點（依距離排序）："]
+            for loc in location_enum:
+                dist_str = f" ({loc['distance_m']}m)" if loc.get("distance_m") is not None else ""
+                loc_lines.append(f"- {loc['name']}{dist_str}")
+            locations_text = "\n".join(loc_lines)
+        else:
+            locations_text = "可用地點：（機器人未連線，無法取得地點資訊）"
+        system_prompt = system_prompt.replace("{{AVAILABLE_LOCATIONS}}", locations_text)
+
         system_prompt = system_prompt.replace("{{CURRENT_TIME}}", current_time)
-        print(f"[TextAPI] System instruction ({len(system_prompt)} chars):\n{system_prompt[:500]}")
+        print(f"[TextAPI] System instruction ({len(system_prompt)} chars)")
 
         all_decls = settings.get("function_declarations", DEFAULT_FUNCTION_DECLARATIONS)
         func_decls = [
             {k: v for k, v in f.items() if k != "enabled"}
             for f in all_decls if f.get("enabled", True)
         ]
+
+        # Dynamically populate inspect_location.location_name.enum
+        patrol_point_ids = set(settings.get("patrol_points", []))
+        location_names = []
+        for loc in location_enum:
+            # If patrol_points is configured, only include those locations
+            if patrol_point_ids and loc["id"] not in patrol_point_ids:
+                continue
+            location_names.append(loc["name"])
+        if not location_names:
+            # Fallback: include all locations
+            location_names = [loc["name"] for loc in location_enum]
+        _location_enum_fcs = {"inspect_location", "guide_to_booth"}
+        for fd in func_decls:
+            if fd.get("name") in _location_enum_fcs:
+                props = fd.get("parameters", {}).get("properties", {})
+                if "location_name" in props:
+                    props["location_name"]["enum"] = location_names
+
         self._enable_google_search = settings.get("text_enable_google_search", False)
 
         # Google Search + function calling can't coexist in the same request

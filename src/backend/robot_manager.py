@@ -7,6 +7,7 @@ command execution, and camera streaming via kachaka_core.
 import base64
 import json
 import logging
+import math
 import threading
 import time
 
@@ -15,6 +16,81 @@ from kachaka_core import KachakaConnection, RobotController, KachakaQueries, Cam
 import settings_service
 
 logger = logging.getLogger(__name__)
+
+
+# ── Telegram helpers ──────────────────────────────────────────────────────────
+
+def _get_telegram_chat_ids() -> list[str]:
+    """Return list of chat IDs for Telegram notifications."""
+    ids = settings_service.get("telegram_chat_ids", [])
+    if isinstance(ids, str):
+        return [ids] if ids else []
+    return [str(i) for i in ids if i]
+
+
+def _send_telegram_text(text: str, chat_ids: list[str] | None = None,
+                        token: str | None = None):
+    """Send a text message to all configured Telegram chat IDs."""
+    import urllib.request
+    if token is None:
+        token = settings_service.get("telegram_bot_token", "")
+    if chat_ids is None:
+        chat_ids = _get_telegram_chat_ids()
+    if not token or not chat_ids:
+        return
+    for chat_id in chat_ids:
+        try:
+            url = f"https://api.telegram.org/bot{token}/sendMessage"
+            payload = json.dumps({
+                "chat_id": chat_id,
+                "text": text,
+                "parse_mode": "Markdown",
+            })
+            req = urllib.request.Request(
+                url, data=payload.encode(),
+                headers={"Content-Type": "application/json"},
+            )
+            urllib.request.urlopen(req, timeout=15)
+        except Exception as e:
+            logger.warning("Telegram text send failed (chat_id=%s): %s", chat_id, e)
+
+
+def _send_telegram_photo(jpeg_bytes: bytes, caption: str,
+                         chat_ids: list[str] | None = None,
+                         token: str | None = None):
+    """Send a photo with caption to all configured Telegram chat IDs."""
+    import urllib.request
+    import uuid as _uuid
+    if token is None:
+        token = settings_service.get("telegram_bot_token", "")
+    if chat_ids is None:
+        chat_ids = _get_telegram_chat_ids()
+    if not token or not chat_ids:
+        return
+    for chat_id in chat_ids:
+        try:
+            boundary = _uuid.uuid4().hex
+            body_parts = []
+            body_parts.append(
+                f'--{boundary}\r\nContent-Disposition: form-data; name="chat_id"\r\n\r\n{chat_id}'.encode()
+            )
+            body_parts.append(
+                f'--{boundary}\r\nContent-Disposition: form-data; name="caption"\r\n\r\n{caption[:1024]}'.encode()
+            )
+            body_parts.append(
+                f'--{boundary}\r\nContent-Disposition: form-data; name="photo"; filename="photo.jpg"\r\nContent-Type: image/jpeg\r\n\r\n'.encode()
+                + jpeg_bytes
+            )
+            body_parts.append(f'--{boundary}--\r\n'.encode())
+            body = b'\r\n'.join(body_parts)
+            req = urllib.request.Request(
+                f"https://api.telegram.org/bot{token}/sendPhoto",
+                data=body,
+                headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+            )
+            urllib.request.urlopen(req, timeout=15)
+        except Exception as e:
+            logger.warning("Telegram photo send failed (chat_id=%s): %s", chat_id, e)
 
 
 class RobotManager:
@@ -75,6 +151,13 @@ class RobotManager:
 
                 # Reset map cache on new connection
                 self._map_cache = None
+
+                # Invalidate location service cache
+                try:
+                    from location_service import location_service
+                    location_service.invalidate()
+                except ImportError:
+                    pass
 
                 # Save IP to settings
                 settings_service.save({"robot_ip": ip})
@@ -154,11 +237,7 @@ class RobotManager:
         }
 
     def get_map_bytes(self) -> bytes | None:
-        """Return cached PNG map bytes, fetching on first call.
-
-        Uses SDK directly (not KachakaQueries) to access map origin
-        coordinates which kachaka_core's get_map() does not expose.
-        """
+        """Return cached PNG map bytes, fetching on first call."""
         if not self._conn:
             return None
         if self._map_cache is None:
@@ -306,11 +385,7 @@ class RobotManager:
     # ── Function call dispatch (used by Gemini sessions) ──────────
 
     def execute_function_call(self, name: str, args: dict) -> dict:
-        """Execute a Gemini function call and return the result.
-
-        Uses RobotController for movement commands (waits for completion,
-        enriched errors, command_id verification).
-        """
+        """Execute a Gemini function call and return the result."""
         dispatch = {
             "move_to_location": self._fc_move_to_location,
             "move_shelf": self._fc_move_shelf,
@@ -318,13 +393,14 @@ class RobotManager:
             "get_robot_status": self._fc_get_robot_status,
             "cancel_command": self._fc_cancel_command,
             "capture_camera": self._fc_capture_camera,
+            "inspect_location": self._fc_inspect_location,
+            "patrol_all": self._fc_patrol_all,
+            "rotate": self._fc_rotate,
             "guide_to_booth": self._fc_guide_to_booth,
-            "start_patrol": self._fc_start_patrol,
-            "get_patrol_history": self._fc_get_patrol_history,
-            "check_crowd": self._fc_check_crowd,
             "notify_staff": self._fc_notify_staff,
             "deliver_drink": self._fc_deliver_drink,
             "return_drink": self._fc_return_drink,
+            "get_patrol_history": self._fc_get_patrol_history,
         }
         handler = dispatch.get(name)
         if not handler:
@@ -333,16 +409,6 @@ class RobotManager:
             return handler(args)
         except Exception as e:
             return {"ok": False, "error": str(e)}
-
-    # ── Helpers ────────────────────────────────────────────────────
-
-    def _resolve_location(self, name: str) -> dict | None:
-        """Resolve a location name to its dict. Returns None if not found."""
-        locations = self.get_locations()
-        for loc in locations:
-            if name in loc["name"] or loc["name"] in name:
-                return loc
-        return None
 
     # ── FC handlers ────────────────────────────────────────────────
 
@@ -386,40 +452,205 @@ class RobotManager:
         return {"ok": True, "message": "Command cancelled"}
 
     def _fc_capture_camera(self, args: dict) -> dict:
-        frame = self.get_camera_frame()
-        if frame and frame.get("ok"):
-            return {"ok": True, "message": "Camera frame captured, image attached"}
-        return {"ok": False, "error": "Camera not available"}
+        """Capture camera frame and analyze with Gemini."""
+        from frame_hub import frame_hub
+        jpeg = frame_hub.wait_for_fresh_frame(timeout=10)
+        if not jpeg:
+            return {"ok": False, "error": "Camera not available"}
 
-    def _fc_guide_to_booth(self, args: dict) -> dict:
+        prompt = args.get("prompt", "") or args.get("query", "")
+
+        # Analyze with Gemini
+        from google import genai
+        from google.genai import types
+        api_key = settings_service.get("gemini_api_key", "")
+        model = settings_service.get("text_model", "gemini-3-flash-preview")
+
+        user_prompt = prompt.strip() if prompt else "請詳細描述這張照片中你看到的所有內容。"
+
+        sys_instruction = (
+            "你是一個影像分析助手。請根據使用者的問題分析照片內容。"
+            "用簡潔的口語化中文回答（2-3句話），不要使用 markdown 格式、"
+            "列表符號或特殊字元。直接描述你看到的內容。"
+        )
+
+        try:
+            client = genai.Client(api_key=api_key)
+            response = client.models.generate_content(
+                model=model,
+                contents=[
+                    types.Content(role="user", parts=[
+                        types.Part.from_bytes(data=jpeg, mime_type="image/jpeg"),
+                        types.Part.from_text(text=user_prompt),
+                    ])
+                ],
+                config=types.GenerateContentConfig(
+                    system_instruction=sys_instruction,
+                ),
+            )
+            analysis = response.text or "No analysis available"
+        except Exception as e:
+            logger.error("Camera analysis error: %s", e)
+            analysis = f"Image analysis failed: {e}"
+
+        # Send to Telegram
+        if settings_service.get("patrol_telegram_notify", True):
+            _send_telegram_photo(jpeg, f"📷 視覺檢測\n\n{analysis}")
+
+        return {
+            "ok": True,
+            "image_analysis": analysis,
+            "message": "Camera frame captured and analyzed",
+        }
+
+    def _fc_inspect_location(self, args: dict) -> dict:
+        """Move to a named location, capture and analyze photo, then return home."""
         location_name = args.get("location_name", "")
         if not location_name:
             return {"ok": False, "error": "location_name is required"}
-        matched = self._resolve_location(location_name)
-        if not matched:
-            locations = self.get_locations()
-            return {"ok": False, "error": f"找不到地點: {location_name}",
-                    "available": [l["name"] for l in locations]}
         if not self._ctrl:
             return {"ok": False, "error": "Robot not connected"}
-        # Move to the booth
-        result = self._ctrl.move_to_location(matched["id"], timeout=120)
-        if not result.get("ok"):
-            return result
-        # Dwell at booth
-        dwell_time = settings_service.get("guide_dwell_time", 30)
-        time.sleep(dwell_time)
-        # Return home
-        home_result = self._ctrl.return_home(timeout=120)
-        if not home_result.get("ok"):
-            return {"ok": False, "error": f"導覽完成但返回失敗: {home_result.get('error', '')}"}
-        return {"ok": True, "message": f"已完成 {matched['name']} 導覽並返回"}
 
-    def _fc_start_patrol(self, args: dict) -> dict:
+        # Exact match via location_service
+        from location_service import location_service
+        matched = location_service.resolve_location_name(location_name)
+        if not matched:
+            all_locs = location_service.get_all_locations()
+            return {
+                "ok": False,
+                "error": f"找不到地點: {location_name}",
+                "available": [loc["name"] for loc in all_locs],
+            }
+
+        # Move to location
+        move_result = self._ctrl.move_to_location(matched["id"], timeout=120)
+        if not move_result.get("ok"):
+            return move_result
+
+        # Dwell
+        dwell = settings_service.get("inspect_dwell_time", 10)
+        time.sleep(dwell)
+
+        # Capture frame
+        from frame_hub import frame_hub
+        jpeg = frame_hub.wait_for_fresh_frame(timeout=10)
+        if not jpeg:
+            self._ctrl.return_home(timeout=120)
+            return {"ok": False, "error": "Camera not available at location"}
+
+        # Analyze with Gemini
+        prompt = args.get("prompt", "") or "請分析這張照片中的環境狀況。繁體中文。"
+        from google import genai
+        from google.genai import types
+        api_key = settings_service.get("gemini_api_key", "")
+        model = settings_service.get("text_model", "gemini-3-flash-preview")
+
+        try:
+            client = genai.Client(api_key=api_key)
+            response = client.models.generate_content(
+                model=model,
+                contents=[
+                    types.Content(role="user", parts=[
+                        types.Part.from_text(text=prompt),
+                        types.Part.from_bytes(data=jpeg, mime_type="image/jpeg"),
+                    ]),
+                ],
+            )
+            analysis = response.text or "No analysis available"
+        except Exception as e:
+            logger.error("Inspect location analysis error: %s", e)
+            analysis = f"Analysis failed: {e}"
+
+        # Send to Telegram
+        caption = f"🔍 定點巡查 — {matched['name']}\n\n{analysis}"
+        _send_telegram_photo(jpeg, caption)
+
+        # Return home
+        self._ctrl.return_home(timeout=120)
+
+        return {
+            "ok": True,
+            "analysis": analysis,
+            "location": matched["name"],
+        }
+
+    def _fc_patrol_all(self, args: dict) -> dict:
+        """Start a patrol run via patrol_service."""
         from patrol_service import patrol_service
         return patrol_service.start_patrol()
 
+    def _fc_rotate(self, args: dict) -> dict:
+        """Rotate in place by specified degrees."""
+        angle_deg = args.get("angle", 15)
+        try:
+            angle_deg = float(angle_deg)
+        except (TypeError, ValueError):
+            angle_deg = 15.0
+        angle_rad = math.radians(angle_deg)
+        self.rotate(angle_rad)
+        return {"ok": True, "message": f"Rotated {angle_deg}°"}
+
+    def _fc_guide_to_booth(self, args: dict) -> dict:
+        """Guide a visitor to a named location, wait, then return home."""
+        location_name = args.get("location_name", "")
+        if not location_name:
+            return {"ok": False, "error": "location_name is required"}
+        if not self._ctrl:
+            return {"ok": False, "error": "Robot not connected"}
+
+        from location_service import location_service
+        matched = location_service.resolve_location_name(location_name)
+        if not matched:
+            all_locs = location_service.get_all_locations()
+            return {"ok": False, "error": f"找不到地點: {location_name}",
+                    "available": [loc["name"] for loc in all_locs]}
+
+        result = self._ctrl.move_to_location(matched["id"], timeout=120)
+        if not result.get("ok"):
+            return result
+
+        dwell_time = settings_service.get("guide_dwell_time", 30)
+        time.sleep(dwell_time)
+
+        self._ctrl.return_home(timeout=120)
+        return {"ok": True, "message": f"已完成 {matched['name']} 導覽並返回"}
+
+
+    def _fc_notify_staff(self, args: dict) -> dict:
+        """Send a notification message to staff via Telegram."""
+        message = args.get("message", "")
+        if not message:
+            return {"ok": False, "error": "message is required"}
+        chat_ids = _get_telegram_chat_ids()
+        token = settings_service.get("telegram_bot_token", "")
+        if not chat_ids or not token:
+            return {"ok": False, "error": "Telegram not configured"}
+        _send_telegram_text(f"📢 通知\n\n{message}", chat_ids, token)
+        return {"ok": True, "message": "Notification sent to staff"}
+
+    def _fc_deliver_drink(self, args: dict) -> dict:
+        """Deliver the drink shelf to the configured destination."""
+        if not self._ctrl:
+            return {"ok": False, "error": "Robot not connected"}
+        shelf_id = settings_service.get("drink_shelf_id", "S01")
+        destination_id = settings_service.get("drink_destination_id", "")
+        if not destination_id:
+            return {"ok": False, "error": "drink_destination_id not configured in settings"}
+        return self._ctrl.move_shelf(shelf_id, destination_id, timeout=120)
+
+    def _fc_return_drink(self, args: dict) -> dict:
+        """Return the drink shelf to its home location."""
+        if not self._ctrl:
+            return {"ok": False, "error": "Robot not connected"}
+        shelf_id = settings_service.get("drink_shelf_id", "S01")
+        result = self._ctrl.return_shelf(shelf_id, timeout=60)
+        if not result.get("ok"):
+            return result
+        self._ctrl.return_home(timeout=120)
+        return {"ok": True, "message": "飲料架已歸位，機器人返回充電座"}
+
     def _fc_get_patrol_history(self, args: dict) -> dict:
+        """Return recent patrol run summaries."""
         import patrol_db
         patrol_db.init_db()
         count = args.get("count", 5)
@@ -437,122 +668,6 @@ class RobotManager:
                 "summary": (r.get("report_content") or "")[:200],
             })
         return {"ok": True, "history": summaries}
-
-    def _fc_check_crowd(self, args: dict) -> dict:
-        # Support both location_id (direct ID like "L01") and location_name (fuzzy match)
-        location_id = args.get("location_id", "") or args.get("location_name", "")
-        if not location_id:
-            return {"ok": False, "error": "location_id or location_name is required"}
-        if not self._ctrl:
-            return {"ok": False, "error": "Robot not connected"}
-        # If it looks like an ID (e.g. "L01"), use directly; otherwise fuzzy-match
-        if location_id.startswith("L") and location_id[1:].isdigit():
-            move_result = self._ctrl.move_to_location(location_id, timeout=120)
-        else:
-            matched = self._resolve_location(location_id)
-            if not matched:
-                locations = self.get_locations()
-                return {"ok": False, "error": f"找不到地點: {location_id}",
-                        "available": [l["name"] for l in locations]}
-            location_id = matched["id"]
-            move_result = self._ctrl.move_to_location(location_id, timeout=120)
-        if not move_result.get("ok"):
-            return move_result
-        # Capture and analyze
-        from frame_hub import frame_hub
-        jpeg = frame_hub.wait_for_fresh_frame(timeout=10)
-        if not jpeg:
-            return {"ok": False, "error": "Camera not available"}
-        # Quick Gemini analysis for crowd
-        from google import genai
-        from google.genai import types
-        api_key = settings_service.get("gemini_api_key", "")
-        model = settings_service.get("patrol_model", "") or settings_service.get("text_model", "gemini-2.0-flash")
-        prompt = settings_service.get(
-            "patrol_image_prompt",
-            f"請分析這張照片中 {location_name} 的人潮狀況。"
-            "回答：大約人數、擁擠程度（空曠/適中/擁擠）、簡短描述。繁體中文。",
-        )
-        # Substitute location_name into prompt if it contains a placeholder
-        prompt = prompt.replace("{location_name}", location_name)
-        client = genai.Client(api_key=api_key)
-        response = client.models.generate_content(
-            model=model,
-            contents=[
-                types.Content(role="user", parts=[
-                    types.Part.from_text(text=prompt),
-                    types.Part.from_bytes(data=jpeg, mime_type="image/jpeg"),
-                ]),
-            ],
-        )
-        analysis = response.text
-        # Telegram notification with photo (if configured)
-        chat_id = settings_service.get("telegram_chat_id", "")
-        token = settings_service.get("telegram_bot_token", "")
-        crowd_notify = settings_service.get("crowd_telegram_notify", True)
-        if chat_id and token and crowd_notify:
-            try:
-                import urllib.request
-                import uuid as _uuid
-                caption = f"📊 人潮檢查 — {location_id}\n\n{analysis}"
-                boundary = _uuid.uuid4().hex
-                body_parts = []
-                body_parts.append(
-                    f'--{boundary}\r\nContent-Disposition: form-data; name="chat_id"\r\n\r\n{chat_id}'.encode()
-                )
-                body_parts.append(
-                    f'--{boundary}\r\nContent-Disposition: form-data; name="caption"\r\n\r\n{caption[:1024]}'.encode()
-                )
-                body_parts.append(
-                    f'--{boundary}\r\nContent-Disposition: form-data; name="photo"; filename="crowd.jpg"\r\nContent-Type: image/jpeg\r\n\r\n'.encode()
-                    + jpeg
-                )
-                body_parts.append(f'--{boundary}--\r\n'.encode())
-                body = b'\r\n'.join(body_parts)
-                req = urllib.request.Request(
-                    f"https://api.telegram.org/bot{token}/sendPhoto",
-                    data=body,
-                    headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
-                )
-                urllib.request.urlopen(req, timeout=15)
-            except Exception as e:
-                print(f"[check_crowd] Telegram photo notify failed: {e}")
-        # Return home
-        self._ctrl.return_home(timeout=120)
-        return {"ok": True, "analysis": analysis, "location": location_id}
-
-    def _fc_notify_staff(self, args: dict) -> dict:
-        message = args.get("message", "")
-        if not message:
-            return {"ok": False, "error": "message is required"}
-        # Send via Telegram
-        chat_id = settings_service.get("telegram_chat_id", "")
-        token = settings_service.get("telegram_bot_token", "")
-        if not chat_id or not token:
-            return {"ok": False, "error": "Telegram not configured (missing chat_id or token)"}
-        import urllib.request
-        url = f"https://api.telegram.org/bot{token}/sendMessage"
-        payload = json.dumps({"chat_id": chat_id, "text": message, "parse_mode": "Markdown"})
-        req = urllib.request.Request(url, data=payload.encode(), headers={"Content-Type": "application/json"})
-        urllib.request.urlopen(req, timeout=10)
-        return {"ok": True, "message": "Notification sent to staff"}
-
-    def _fc_deliver_drink(self, args: dict) -> dict:
-        if not self._ctrl:
-            return {"ok": False, "error": "Robot not connected"}
-        shelf_id = settings_service.get("drink_shelf_id", "S01")
-        destination_id = settings_service.get("drink_shelf_home", "L01")
-        return self._ctrl.move_shelf(shelf_id, destination_id, timeout=120)
-
-    def _fc_return_drink(self, args: dict) -> dict:
-        if not self._ctrl:
-            return {"ok": False, "error": "Robot not connected"}
-        shelf_id = settings_service.get("drink_shelf_id", "S01")
-        result = self._ctrl.return_shelf(shelf_id, timeout=60)
-        if not result.get("ok"):
-            return result
-        self._ctrl.return_home(timeout=120)
-        return {"ok": True, "message": "飲料架已歸位，機器人返回充電座"}
 
     # ── Auto-connect on startup ───────────────────────────────────
 

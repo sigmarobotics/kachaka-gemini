@@ -7,6 +7,8 @@
     <title>Kachaka Live</title>
     <link rel="stylesheet" href="/static/css/style.css">
     <link rel="icon" type="image/png" href="/static/favicon.png">
+    <script src="https://cdn.jsdelivr.net/npm/marked@15/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
 </head>
 
 <body>
@@ -150,23 +152,6 @@
                                 <button id="btn-profile-delete" class="btn-danger" style="padding: 6px 14px; font-size: 12px;">Delete</button>
                             </div>
 
-                            <h3 class="settings-section-title">Gemini Configuration</h3>
-
-                            <div class="form-group">
-                                <label>Gemini API Key</label>
-                                <input type="password" id="setting-api-key" placeholder="Enter Gemini API Key">
-                            </div>
-                            <div class="form-group">
-                                <label>Telegram Bot Token</label>
-                                <input type="password" id="setting-telegram-token" placeholder="Enter Telegram Bot Token">
-                            </div>
-                            <div class="form-group">
-                                <label>API Mode</label>
-                                <select id="setting-api-mode">
-                                    <option value="live">Live API (Streaming Audio/Text)</option>
-                                    <option value="text">Text API (REST)</option>
-                                </select>
-                            </div>
                             <div class="form-group">
                                 <label>Robot IP</label>
                                 <div style="display: flex; gap: 8px; align-items: center;">
@@ -176,34 +161,32 @@
                                 </div>
                                 <small id="robot-connection-status" style="margin-top: 4px; display: block; color: var(--muted);">Not connected</small>
                             </div>
+
                             <div class="form-group">
-                                <label>Shelf IDs (comma separated)</label>
-                                <input type="text" id="setting-shelf-ids" placeholder="shelf_1, shelf_2">
+                                <label>Kiosk 所在位置（A* 距離起點）</label>
+                                <select id="kiosk-location"></select>
                             </div>
 
-                            <h3 class="settings-section-title">Exhibition Title</h3>
                             <div class="form-group">
+                                <label>A* 路徑距離（自動計算）</label>
+                                <textarea id="setting-robot-info" class="prompt-textarea" rows="6" readonly placeholder="機器人未連線，無法計算距離..."></textarea>
+                            </div>
+
+                            <div class="form-group">
+                                <label>Exhibition Title</label>
                                 <input type="text" id="exhibition-title" placeholder="展覽名稱">
                             </div>
 
-                            <h3 class="settings-section-title">Telegram Notification</h3>
-                            <div class="form-group">
-                                <label>Staff Chat ID</label>
-                                <input type="text" id="telegram-chat-id" placeholder="e.g. -1001234567890">
-                            </div>
-                            <div class="form-group" style="flex-direction: row; align-items: center; gap: 12px;">
-                                <input type="checkbox" id="patrol-telegram-notify" style="width: auto;">
-                                <label for="patrol-telegram-notify" style="margin: 0; cursor: pointer;">巡檢完成通知</label>
-                            </div>
-                            <div class="form-group" style="flex-direction: row; align-items: center; gap: 12px;">
-                                <input type="checkbox" id="crowd-telegram-notify" style="width: auto;">
-                                <label for="crowd-telegram-notify" style="margin: 0; cursor: pointer;">人潮檢查通知</label>
-                            </div>
-
-                            <h3 class="settings-section-title">語音模式</h3>
                             <div class="form-group" style="flex-direction: row; align-items: center; gap: 12px;">
                                 <input type="checkbox" id="live-auto-interrupt" style="width: auto;">
                                 <label for="live-auto-interrupt" style="margin: 0; cursor: pointer;">自動打斷（VAD）— 關閉則使用手動打斷按鈕（適合吵雜環境）</label>
+                            </div>
+
+                            <h3 class="settings-section-title">Gemini</h3>
+
+                            <div class="form-group">
+                                <label>Gemini API Key</label>
+                                <input type="password" id="setting-api-key" placeholder="Enter Gemini API Key">
                             </div>
 
                             <h3 class="settings-section-title">Token Usage</h3>
@@ -228,6 +211,20 @@
                                     <button class="btn-small" id="btn-refresh-tokens">Refresh</button>
                                     <button class="btn-small btn-reset" id="btn-reset-tokens">Reset</button>
                                 </div>
+                            </div>
+
+                            <h3 class="settings-section-title">Telegram</h3>
+                            <div class="form-group">
+                                <label>Bot Token</label>
+                                <input type="password" id="setting-telegram-token" placeholder="Enter Telegram Bot Token">
+                            </div>
+                            <div class="form-group">
+                                <label>Chat IDs (每行一個)</label>
+                                <textarea id="telegram-chat-ids" rows="3" placeholder="e.g. -1001234567890&#10;-1009876543210"></textarea>
+                            </div>
+                            <div class="form-group" style="flex-direction: row; align-items: center; gap: 12px;">
+                                <input type="checkbox" id="patrol-telegram-notify" style="width: auto;">
+                                <label for="patrol-telegram-notify" style="margin: 0; cursor: pointer;">巡檢完成通知</label>
                             </div>
                         </div>
                     </div>
@@ -254,16 +251,6 @@
                                         <input type="file" id="upload-knowledge-base" accept=".json,.txt,.md" multiple hidden>
                                     </label>
                                     <button class="btn-small btn-reset" id="btn-clear-knowledge-base">Clear</button>
-                                </div>
-                            </div>
-
-                            <h3 class="settings-section-title">Robot Background Info</h3>
-                            <div class="form-group">
-                                <label>Pre-injected location/shelf data (appended to system instruction at connect time)</label>
-                                <textarea id="setting-robot-info" class="prompt-textarea" rows="6" placeholder="Click buttons below to fetch data from robot..."></textarea>
-                                <div class="json-actions">
-                                    <button class="btn-small" id="btn-fetch-locations">Fetch Locations</button>
-                                    <button class="btn-small" id="btn-fetch-shelves">Fetch Shelves</button>
                                 </div>
                             </div>
 
@@ -299,48 +286,24 @@
 
                             <h3 class="settings-section-title">Patrol Config</h3>
                             <div class="form-group">
-                                <label>巡檢點位</label>
-                                <div id="patrol-points-editor">
-                                    <div id="patrol-points-list"></div>
-                                    <button class="btn-small" id="btn-add-patrol-point">+ 新增巡檢點</button>
+                                <label>巡檢點位（勾選要巡檢的地點）</label>
+                                <div id="patrol-points-checkboxes" class="patrol-checkboxes">
+                                    <span class="patrol-empty">載入中...</span>
                                 </div>
                             </div>
                             <div class="form-group">
-                                <label>巡檢模型</label>
-                                <div class="model-select-row">
-                                    <select id="patrol-model"></select>
-                                    <button class="btn-small btn-query-models" id="btn-query-patrol-models">Query</button>
-                                </div>
-                                <small>留空使用 Text 模型</small>
-                            </div>
-                            <div class="form-group">
-                                <label>影像分析提示</label>
+                                <label>巡檢影像分析提示</label>
                                 <textarea id="patrol-image-prompt" rows="3" placeholder="巡檢影像分析時使用的提示..."></textarea>
                             </div>
-                            <div class="form-group" style="flex-direction: row; align-items: center; gap: 12px;">
-                                <input type="checkbox" id="patrol-video-enable" style="width: auto;">
-                                <label for="patrol-video-enable" style="margin: 0; cursor: pointer;">啟用影片分析</label>
+                            <div class="form-group">
+                                <label>定點巡查等待時間 (秒)</label>
+                                <input type="number" id="inspect-dwell-time" min="1" max="120" value="10" placeholder="10">
                             </div>
                             <div class="form-group">
-                                <label>影片分析提示</label>
-                                <textarea id="patrol-video-prompt" rows="3" placeholder="影片分析時使用的提示..."></textarea>
+                                <label>帶路導覽等待時間 (秒)</label>
+                                <input type="number" id="guide-dwell-time" min="1" max="300" value="30" placeholder="30">
                             </div>
 
-                            <h3 class="settings-section-title">Delivery Config</h3>
-                            <div class="form-group">
-                                <label>飲料層架 ID</label>
-                                <input type="text" id="drink-shelf-id" placeholder="S01">
-                            </div>
-                            <div class="form-group">
-                                <label>飲料層架歸位地點</label>
-                                <select id="drink-shelf-home"></select>
-                            </div>
-
-                            <h3 class="settings-section-title">Guide Config</h3>
-                            <div class="form-group">
-                                <label>導覽停留時間 (秒)</label>
-                                <input type="number" id="guide-dwell-time" min="5" max="300" value="30" placeholder="30">
-                            </div>
                         </div>
                     </div>
 
@@ -472,24 +435,6 @@
                             <div class="form-group">
                                 <label>Top-K</label>
                                 <input type="number" id="setting-live-top-k" min="1" max="100" value="40">
-                            </div>
-
-                            <h3 class="settings-section-title">Interim Response</h3>
-                            <div class="form-group" style="flex-direction: row; align-items: center; gap: 12px;">
-                                <input type="checkbox" id="setting-enable-interim" style="width: auto;">
-                                <label for="setting-enable-interim" style="margin: 0; cursor: pointer;">Enable Interim Response during Function Calls</label>
-                            </div>
-                            <div class="form-group">
-                                <label>Interim Phrases (function name &rarr; spoken text)</label>
-                                <textarea id="setting-interim-phrases" rows="10" class="json-editor" spellcheck="false"></textarea>
-                                <div id="interim-phrases-error" class="json-error" style="display: none;"></div>
-                            </div>
-                            <div class="form-group">
-                                <div class="json-actions">
-                                    <button class="btn-small btn-generate" id="btn-generate-interim">Generate Audio with Live API</button>
-                                    <span id="interim-generate-status" class="interim-status"></span>
-                                </div>
-                                <div id="interim-audio-status" class="interim-audio-list"></div>
                             </div>
                         </div>
                     </div>

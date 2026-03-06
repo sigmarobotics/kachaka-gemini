@@ -137,9 +137,9 @@ function drawWaveform(w, h) {
     const maxAmplitude = h * 0.3;
 
     const layers = [
-        { color: 'rgba(255, 120, 60, 0.6)', amplitude: 1.0, frequency: 1.0, speed: 1.0, lineWidth: 3 },
-        { color: 'rgba(255, 160, 80, 0.4)', amplitude: 0.7, frequency: 1.5, speed: 0.8, lineWidth: 2 },
-        { color: 'rgba(255, 200, 120, 0.3)', amplitude: 0.5, frequency: 2.0, speed: 1.2, lineWidth: 1.5 },
+        { color: 'rgba(255, 120, 60, 0.9)', amplitude: 1.0, frequency: 1.0, speed: 1.0, lineWidth: 6 },
+        { color: 'rgba(255, 160, 80, 0.7)', amplitude: 0.7, frequency: 1.5, speed: 0.8, lineWidth: 4 },
+        { color: 'rgba(255, 200, 120, 0.5)', amplitude: 0.5, frequency: 2.0, speed: 1.2, lineWidth: 3 },
     ];
 
     for (const layer of layers) {

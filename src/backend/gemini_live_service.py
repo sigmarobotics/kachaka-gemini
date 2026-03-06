@@ -1,13 +1,11 @@
 import asyncio
 import json
-import base64
 import traceback
 import uuid
 from datetime import datetime, timezone, timedelta
 import websockets
-from google import genai
-from google.genai import types
 from robot_manager import robot_manager
+from location_service import location_service
 import settings_service
 import token_service
 from config import DEFAULT_FUNCTION_DECLARATIONS, _clamp
@@ -58,6 +56,18 @@ class GeminiLiveSession:
         # Inject local time (UTC+8) into {{CURRENT_TIME}} placeholder
         utc8 = timezone(timedelta(hours=8))
         current_time = datetime.now(utc8).strftime("%Y-%m-%d %H:%M:%S")
+        # Inject available locations into system prompt
+        location_enum = location_service.get_location_enum_with_distances()
+        if location_enum:
+            loc_lines = ["可用地點（依距離排序）："]
+            for loc in location_enum:
+                dist_str = f" ({loc['distance_m']}m)" if loc.get("distance_m") is not None else ""
+                loc_lines.append(f"- {loc['name']}{dist_str}")
+            locations_text = "\n".join(loc_lines)
+        else:
+            locations_text = "可用地點：（機器人未連線，無法取得地點資訊）"
+        system_prompt = system_prompt.replace("{{AVAILABLE_LOCATIONS}}", locations_text)
+
         system_prompt = system_prompt.replace("{{CURRENT_TIME}}", current_time)
         print(f"System instruction ({len(system_prompt)} chars):\n{system_prompt[:500]}")
 
@@ -67,6 +77,22 @@ class GeminiLiveSession:
             {k: v for k, v in f.items() if k != "enabled"}
             for f in all_decls if f.get("enabled", True)
         ]
+
+        # Dynamically populate inspect_location.location_name.enum
+        patrol_point_ids = set(settings.get("patrol_points", []))
+        location_names = []
+        for loc in location_enum:
+            if patrol_point_ids and loc["id"] not in patrol_point_ids:
+                continue
+            location_names.append(loc["name"])
+        if not location_names:
+            location_names = [loc["name"] for loc in location_enum]
+        _location_enum_fcs = {"inspect_location", "guide_to_booth"}
+        for fd in func_decls:
+            if fd.get("name") in _location_enum_fcs:
+                props = fd.get("parameters", {}).get("properties", {})
+                if "location_name" in props:
+                    props["location_name"]["enum"] = location_names
         enable_google_search = settings.get("live_enable_google_search", False)
         auto_interrupt = settings.get("live_auto_interrupt", True)
 
@@ -272,17 +298,6 @@ class GeminiLiveSession:
                 result = await asyncio.to_thread(robot_manager.execute_function_call, fn_name, fn_args)
                 print(f"[Live] FC {fn_name} execute: {time.monotonic()-t_start:.1f}s")
 
-                # Two-stage: for capture_camera, the Live API toolResponse
-                # doesn't support multimodal data (images). Forward the user's
-                # query + image to a Text API generateContent call for analysis,
-                # then return the text result so the Live model can read it aloud.
-                if fn_name == "capture_camera" and result.get("ok"):
-                    frame = robot_manager.get_camera_frame()
-                    if frame and frame.get("ok") and frame.get("image_base64"):
-                        user_query = fn_args.get("query", "")
-                        analysis = await self._analyze_camera_image(frame["image_base64"], user_query)
-                        result["image_analysis"] = analysis
-
                 # Notify client about result
                 await self._send_to_client({
                     "type": "function_result",
@@ -344,61 +359,6 @@ class GeminiLiveSession:
                     "response": response,
                     "total": total,
                 })
-
-    async def _analyze_camera_image(self, image_base64: str, user_query: str = "") -> str:
-        """Analyze camera image via a separate generateContent call.
-
-        The Live API's toolResponse doesn't support multimodal data (images),
-        so we forward the user's query + image to the Text API model and
-        return the text analysis. The Live model then reads it aloud.
-        """
-        import time
-        t0 = time.monotonic()
-        try:
-            settings = settings_service.get_all()
-            api_key = settings.get("gemini_api_key", "")
-            if not api_key:
-                return "Unable to analyze: API key not configured"
-
-            client = genai.Client(api_key=api_key)
-            model = settings.get("text_model", "gemini-2.0-flash")
-
-            user_prompt = user_query.strip() if user_query else "請詳細描述這張照片中你看到的所有內容。"
-
-            # Use the same text model as the Text API session for analysis.
-            analysis_model = model
-
-            sys_instruction = (
-                "你是一個影像分析助手。請根據使用者的問題分析照片內容。"
-                "用簡潔的口語化中文回答（2-3句話），不要使用 markdown 格式、"
-                "列表符號或特殊字元。直接描述你看到的內容。"
-            )
-
-            print(f"[Live] Camera analysis: model={analysis_model}, query={user_prompt[:80]}")
-
-            image_bytes = base64.b64decode(image_base64)
-            response = await asyncio.to_thread(
-                client.models.generate_content,
-                model=analysis_model,
-                contents=[
-                    types.Content(role="user", parts=[
-                        types.Part.from_bytes(data=image_bytes, mime_type="image/jpeg"),
-                        types.Part.from_text(text=user_prompt),
-                    ])
-                ],
-                config=types.GenerateContentConfig(
-                    system_instruction=sys_instruction,
-                ),
-            )
-            elapsed = time.monotonic() - t0
-            analysis = response.text or "No analysis available"
-            print(f"[Live] Camera analysis done in {elapsed:.1f}s ({len(analysis)} chars): {analysis[:200]}")
-            return analysis
-        except Exception as e:
-            elapsed = time.monotonic() - t0
-            print(f"[Live] Camera image analysis error ({elapsed:.1f}s): {e}")
-            traceback.print_exc()
-            return f"Image analysis failed: {e}"
 
     async def _send_to_client(self, msg: dict):
         """Send a message to the browser client."""

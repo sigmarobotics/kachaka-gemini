@@ -1,5 +1,4 @@
 import asyncio
-import base64
 import json
 import math
 import os
@@ -11,15 +10,13 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
-import websockets
-
 from robot_manager import robot_manager
 import file_service
 import settings_service
 import profile_service
 import token_service
 from config import DEFAULT_SETTINGS, DATA_DIR
-from gemini_live_service import GeminiLiveSession, GEMINI_WS_URL
+from gemini_live_service import GeminiLiveSession
 from gemini_text_service import GeminiTextSession
 from telegram_service import telegram_manager
 import patrol_db
@@ -119,12 +116,18 @@ async def camera_front():
 
 @app.get("/api/locations")
 async def get_locations():
+    from location_service import location_service
+    enum = location_service.get_location_enum_with_distances()
+    if enum:
+        return enum
+    # Fallback: raw locations without A* distances
     return robot_manager.get_locations()
 
 
 @app.get("/api/shelves")
 async def get_shelves():
     return robot_manager.get_shelves()
+
 
 
 @app.get("/api/settings")
@@ -144,24 +147,7 @@ async def get_settings(request: Request):
     else:
         safe["telegram_bot_token_masked"] = ""
     safe.pop("telegram_bot_token", None)
-    # Replace interim_audio with just key list (audio data is large)
-    if safe.get("interim_audio"):
-        safe["interim_audio_keys"] = list(safe["interim_audio"].keys())
-    else:
-        safe["interim_audio_keys"] = []
-    safe.pop("interim_audio", None)
     return safe
-
-
-@app.get("/api/interim_audio")
-async def get_interim_audio():
-    """Return the pre-generated interim audio data (large payload)."""
-    settings = settings_service.get_all()
-    return {
-        "enabled": settings.get("enable_interim_response", False),
-        "audio": settings.get("interim_audio", {}),
-        "phrases": settings.get("interim_phrases", {}),
-    }
 
 
 @app.get("/api/settings/defaults")
@@ -351,98 +337,6 @@ async def reupload_file(file_id: str):
     if not record:
         return JSONResponse({"error": "File not found or local copy missing"}, status_code=404)
     return _safe_record(record)
-
-
-@app.post("/api/generate_interim_audio")
-async def generate_interim_audio(request: Request):
-    """Generate interim response audio clips using Gemini Live API."""
-    body = await request.json()
-    phrases = body.get("phrases", {})
-    if not phrases:
-        return JSONResponse({"error": "No phrases provided"}, status_code=400)
-
-    settings = settings_service.get_all()
-    api_key = settings.get("gemini_api_key", "")
-    if not api_key:
-        return JSONResponse({"error": "Gemini API key not configured"}, status_code=400)
-
-    model = settings.get("live_model", "gemini-2.5-flash-native-audio-latest")
-    voice_name = settings.get("voice_name", "Aoede")
-
-    url = f"{GEMINI_WS_URL}?key={api_key}"
-
-    try:
-        ws = await websockets.connect(url, max_size=None, close_timeout=5)
-
-        # Setup: simple TTS session — instruct model to just speak the given text
-        setup_msg = {
-            "setup": {
-                "model": f"models/{model}",
-                "generationConfig": {
-                    "responseModalities": ["AUDIO"],
-                    "speechConfig": {
-                        "voiceConfig": {
-                            "prebuiltVoiceConfig": {"voiceName": voice_name}
-                        }
-                    },
-                },
-                "systemInstruction": {
-                    "parts": [{"text": (
-                        "你是一個語音助手。請直接朗讀用戶提供的文字，不要添加任何額外的內容、解釋或問候。"
-                        "只需要自然地唸出文字即可。"
-                    )}]
-                },
-            }
-        }
-        await ws.send(json.dumps(setup_msg))
-        await ws.recv()  # setup complete
-
-        result = {}
-        for func_name, phrase in phrases.items():
-            # Send the phrase as a text turn
-            turn_msg = {
-                "clientContent": {
-                    "turns": [{"role": "user", "parts": [{"text": phrase}]}],
-                    "turnComplete": True,
-                }
-            }
-            await ws.send(json.dumps(turn_msg))
-
-            # Collect audio response chunks
-            audio_chunks = []
-            while True:
-                raw = await asyncio.wait_for(ws.recv(), timeout=15)
-                data = json.loads(raw)
-                if "serverContent" in data:
-                    content = data["serverContent"]
-                    parts = content.get("modelTurn", {}).get("parts", [])
-                    for part in parts:
-                        if "inlineData" in part:
-                            audio_chunks.append(part["inlineData"]["data"])
-                    if content.get("turnComplete", False):
-                        break
-
-            # Concatenate PCM chunks into single base64 string
-            if audio_chunks:
-                all_pcm = b""
-                for chunk_b64 in audio_chunks:
-                    all_pcm += base64.b64decode(chunk_b64)
-                result[func_name] = base64.b64encode(all_pcm).decode("utf-8")
-
-        await ws.close()
-
-        # Save to settings
-        settings_service.save({"interim_audio": result})
-
-        return {"status": "ok", "generated": list(result.keys())}
-
-    except asyncio.TimeoutError:
-        return JSONResponse({"error": "Gemini response timed out"}, status_code=504)
-    except Exception as e:
-        print(f"Interim audio generation error: {e}")
-        import traceback
-        traceback.print_exc()
-        return JSONResponse({"error": str(e)}, status_code=500)
 
 
 @app.post("/api/move")

@@ -3,8 +3,8 @@
 Accepts start_patrol(), runs in a background daemon thread, and exposes
 status/progress via get_status() and cancel_patrol().
 
-Flow per point: move robot -> capture frame -> Gemini VLM analysis -> save to DB
-After all points: generate AI summary -> update DB
+Flow: move to each patrol point -> capture frame -> VLM analysis -> save to DB
+After all points: generate AI summary -> update DB -> Telegram notification
 """
 
 import json
@@ -24,7 +24,7 @@ import patrol_db
 import settings_service
 from config import DATA_DIR
 from frame_hub import frame_hub
-from robot_manager import robot_manager
+from robot_manager import robot_manager, _send_telegram_text
 
 logger = logging.getLogger(__name__)
 
@@ -118,19 +118,18 @@ class PatrolService:
             "error": self._error_message if self._status == PatrolStatus.ERROR else "",
         }
 
-    def start_patrol(self, points: list[dict] | None = None) -> dict:
+    def start_patrol(self, points: list | None = None) -> dict:
         """Start a patrol run. Returns immediately; patrol runs in background.
 
         Args:
-            points: List of patrol point dicts, each with keys:
-                    name (str), location_id (str), prompt (str).
+            points: List of location IDs (strings) or list of dicts with
+                    {name, location_id, prompt} for backward compatibility.
                     If None, reads from settings.
 
         Returns:
-            {"ok": bool, "run_id": int} on success, {"ok": False, "error": str} on failure.
+            {"ok": bool, "run_id": int} on success.
         """
         with self._lock:
-            # Validate preconditions
             if self.is_patrolling:
                 return {"ok": False, "error": "Patrol already in progress"}
 
@@ -148,10 +147,14 @@ class PatrolService:
             if not points:
                 return {"ok": False, "error": "No patrol points configured"}
 
+            # Normalize: convert list of IDs to list of dicts
+            normalized = self._normalize_points(points)
+            if not normalized:
+                return {"ok": False, "error": "Could not resolve any patrol points"}
+
             # Initialise DB
             patrol_db.init_db()
 
-            # Determine model
             model_id = settings.get("text_model", "gemini-3-flash-preview")
 
             # Create DB run
@@ -162,21 +165,51 @@ class PatrolService:
             self._status = PatrolStatus.STARTING
             self._run_id = run_id
             self._current_point = 0
-            self._total_points = len(points)
+            self._total_points = len(normalized)
             self._cancel_event.clear()
             self._error_message = ""
 
             # Spawn background thread
             self._thread = threading.Thread(
                 target=self._patrol_loop,
-                args=(run_id, points, api_key, model_id, settings),
+                args=(run_id, normalized, api_key, model_id, settings),
                 daemon=True,
                 name=f"patrol-{run_id}",
             )
             self._thread.start()
 
-            logger.info("Patrol started: run_id=%d, points=%d", run_id, len(points))
+            logger.info("Patrol started: run_id=%d, points=%d", run_id, len(normalized))
             return {"ok": True, "run_id": run_id}
+
+    def _normalize_points(self, points: list) -> list[dict]:
+        """Convert patrol points to normalized format [{name, location_id, prompt}]."""
+        from location_service import location_service
+        all_locs = location_service.get_all_locations()
+        loc_by_id = {loc["id"]: loc for loc in all_locs}
+        default_prompt = settings_service.get(
+            "patrol_image_prompt",
+            "請分析這張照片中的環境狀況。繁體中文。",
+        )
+
+        result = []
+        for pt in points:
+            if isinstance(pt, str):
+                # Location ID string
+                loc = loc_by_id.get(pt)
+                if loc:
+                    result.append({
+                        "name": loc["name"],
+                        "location_id": pt,
+                        "prompt": default_prompt,
+                    })
+            elif isinstance(pt, dict):
+                # Legacy dict format
+                result.append({
+                    "name": pt.get("name", ""),
+                    "location_id": pt.get("location_id", ""),
+                    "prompt": pt.get("prompt", default_prompt),
+                })
+        return result
 
     def cancel_patrol(self) -> dict:
         """Cancel the current patrol run."""
@@ -184,7 +217,6 @@ class PatrolService:
             return {"ok": False, "error": "No patrol in progress"}
 
         self._cancel_event.set()
-        # Try to cancel the robot's current movement command
         try:
             robot_manager.cancel_command()
         except Exception as e:
@@ -196,24 +228,16 @@ class PatrolService:
     # ── Progress callbacks ────────────────────────────────────────
 
     def register_progress_callback(self, cb):
-        """Register a callback for patrol progress events.
-
-        Callback signature: cb(event: str, data: dict)
-        Events: moving, inspecting, inspection_done, generating_report,
-                completed, cancelled, error
-        """
         if cb not in self._progress_callbacks:
             self._progress_callbacks.append(cb)
 
     def unregister_progress_callback(self, cb):
-        """Remove a previously registered progress callback."""
         try:
             self._progress_callbacks.remove(cb)
         except ValueError:
             pass
 
     def _emit_progress(self, event: str, data: dict | None = None):
-        """Notify all registered progress callbacks."""
         payload = {"event": event, "run_id": self._run_id, **(data or {})}
         for cb in list(self._progress_callbacks):
             try:
@@ -239,12 +263,9 @@ class PatrolService:
 
         try:
             client = genai.Client(api_key=api_key)
-
-            # Build inspection system prompt
             system_prompt = self._build_inspection_system_prompt(settings)
 
             for idx, point in enumerate(points):
-                # ── Check cancellation ──
                 if self._cancel_event.is_set():
                     self._finish_cancelled(run_id, total_input_tokens, total_output_tokens, total_total_tokens)
                     return
@@ -262,10 +283,8 @@ class PatrolService:
                     "total_points": len(points),
                     "point_name": point_name,
                 })
-                logger.info(
-                    "Patrol [%d/%d] Moving to %s (%s)",
-                    idx + 1, len(points), point_name, location_id,
-                )
+                logger.info("Patrol [%d/%d] Moving to %s (%s)",
+                            idx + 1, len(points), point_name, location_id)
 
                 move_result = robot_manager.execute_function_call(
                     "move_to_location", {"location_id": location_id}
@@ -276,10 +295,7 @@ class PatrolService:
                     return
 
                 if not move_result.get("ok"):
-                    logger.warning(
-                        "Move to %s failed: %s", point_name, move_result.get("error", "unknown")
-                    )
-                    # Continue to next point rather than aborting
+                    logger.warning("Move to %s failed: %s", point_name, move_result.get("error", "unknown"))
                     continue
 
                 # ── INSPECT ──
@@ -291,10 +307,9 @@ class PatrolService:
                 })
                 logger.info("Patrol [%d/%d] Inspecting %s", idx + 1, len(points), point_name)
 
-                # Capture frame
                 jpeg_bytes = frame_hub.wait_for_fresh_frame(timeout=10)
                 if not jpeg_bytes:
-                    logger.warning("No frame captured at %s, skipping inspection", point_name)
+                    logger.warning("No frame captured at %s, skipping", point_name)
                     continue
 
                 # Save image
@@ -304,20 +319,13 @@ class PatrolService:
                 with open(image_path, "wb") as f:
                     f.write(jpeg_bytes)
 
-                # Get robot pose
                 state = robot_manager.get_state()
                 pose = state.get("pose", {})
-                coord_x = pose.get("x", 0.0)
-                coord_y = pose.get("y", 0.0)
 
-                # VLM inspection
                 inspection = self._inspect_with_gemini(
-                    client=client,
-                    model_id=model_id,
-                    system_prompt=system_prompt,
-                    point_name=point_name,
-                    prompt=prompt,
-                    jpeg_bytes=jpeg_bytes,
+                    client=client, model_id=model_id,
+                    system_prompt=system_prompt, point_name=point_name,
+                    prompt=prompt, jpeg_bytes=jpeg_bytes,
                 )
 
                 # Rename image with OK/NG tag
@@ -330,12 +338,10 @@ class PatrolService:
                 except OSError as e:
                     logger.warning("Failed to rename image: %s", e)
 
-                # Store in DB
                 patrol_db.insert_inspection(
-                    run_id=run_id,
-                    point_name=point_name,
-                    coordinate_x=coord_x,
-                    coordinate_y=coord_y,
+                    run_id=run_id, point_name=point_name,
+                    coordinate_x=pose.get("x", 0.0),
+                    coordinate_y=pose.get("y", 0.0),
                     prompt=prompt,
                     ai_response=inspection.get("raw_response", ""),
                     is_ng=1 if inspection["is_ng"] else 0,
@@ -346,12 +352,10 @@ class PatrolService:
                     total_tokens=inspection.get("total_tokens", 0),
                 )
 
-                # Accumulate tokens
                 total_input_tokens += inspection.get("input_tokens", 0)
                 total_output_tokens += inspection.get("output_tokens", 0)
                 total_total_tokens += inspection.get("total_tokens", 0)
 
-                # Track for summary
                 inspections.append({
                     "point_name": point_name,
                     "is_ng": inspection["is_ng"],
@@ -366,10 +370,15 @@ class PatrolService:
                     "description": inspection["description"],
                 })
 
-            # ── Check cancellation before report ──
             if self._cancel_event.is_set():
                 self._finish_cancelled(run_id, total_input_tokens, total_output_tokens, total_total_tokens)
                 return
+
+            # ── Return home ──
+            try:
+                robot_manager.execute_function_call("move_to_location", {"location_id": "home"})
+            except Exception:
+                pass
 
             # ── GENERATE SUMMARY ──
             self._status = PatrolStatus.GENERATING_REPORT
@@ -377,17 +386,12 @@ class PatrolService:
             logger.info("Patrol generating summary for run_id=%d", run_id)
 
             summary = self._generate_summary(
-                client=client,
-                model_id=model_id,
-                inspections=inspections,
+                client=client, model_id=model_id, inspections=inspections,
             )
 
-            # Final DB update
             end_time = datetime.now(UTC8).isoformat()
             patrol_db.update_run(
-                run_id,
-                status="Completed",
-                end_time=end_time,
+                run_id, status="Completed", end_time=end_time,
                 report_content=summary.get("text", ""),
                 input_tokens=total_input_tokens,
                 output_tokens=total_output_tokens,
@@ -397,75 +401,62 @@ class PatrolService:
                 report_total_tokens=summary.get("total_tokens", 0),
             )
 
-            # Send Telegram notification if enabled
+            # Telegram notification
             if settings_service.get("patrol_telegram_notify", True):
                 try:
-                    from telegram_service import telegram_manager
-                    from report_service import report_service as _report_svc
-
-                    # Generate concise Telegram message
-                    tg_message = f"*巡檢完成* ({len(inspections)} 個檢查點)\n"
                     ng_count = sum(1 for i in inspections if i.get("is_ng"))
-                    tg_message += f"正常: {len(inspections) - ng_count} | 異常: {ng_count}\n\n"
-                    if summary:
-                        tg_message += summary.get("text", "")[:500]
-
-                    # Generate PDF
-                    pdf_bytes = _report_svc.generate_patrol_pdf(run_id)
-
-                    # Send async from sync thread
-                    import asyncio
-                    loop = asyncio.new_event_loop()
-                    loop.run_until_complete(
-                        telegram_manager.send_patrol_notification(tg_message, pdf_bytes)
+                    tg_message = (
+                        f"*巡檢完成* ({len(inspections)} 個檢查點)\n"
+                        f"正常: {len(inspections) - ng_count} | 異常: {ng_count}\n\n"
+                        + (summary.get("text", "")[:500])
                     )
-                    loop.close()
+                    _send_telegram_text(tg_message)
+
+                    # Try to generate and send PDF
+                    try:
+                        from report_service import report_service as _report_svc
+                        from telegram_service import telegram_manager
+                        import asyncio
+                        pdf_bytes = _report_svc.generate_patrol_pdf(run_id)
+                        if pdf_bytes:
+                            loop = asyncio.new_event_loop()
+                            loop.run_until_complete(
+                                telegram_manager.send_patrol_notification(tg_message, pdf_bytes)
+                            )
+                            loop.close()
+                    except Exception as e:
+                        logger.warning("PDF notification failed: %s", e)
                 except Exception as e:
                     logger.error("Telegram notification failed: %s", e)
 
             self._status = PatrolStatus.COMPLETED
-            self._emit_progress("completed", {
-                "report": summary.get("text", ""),
-            })
+            self._emit_progress("completed", {"report": summary.get("text", "")})
             logger.info("Patrol completed: run_id=%d", run_id)
 
         except Exception as e:
             logger.error("Patrol error: %s\n%s", e, traceback.format_exc())
             self._status = PatrolStatus.ERROR
             self._error_message = str(e)
-
             try:
                 end_time = datetime.now(UTC8).isoformat()
                 patrol_db.update_run(
-                    run_id,
-                    status="Error",
-                    end_time=end_time,
+                    run_id, status="Error", end_time=end_time,
                     input_tokens=total_input_tokens,
                     output_tokens=total_output_tokens,
                     total_tokens=total_total_tokens,
                 )
             except Exception:
                 pass
-
             self._emit_progress("error", {"error": str(e)})
 
     # ── Cancellation helper ───────────────────────────────────────
 
-    def _finish_cancelled(
-        self,
-        run_id: int,
-        total_input_tokens: int,
-        total_output_tokens: int,
-        total_total_tokens: int,
-    ):
-        """Finalise a cancelled patrol run."""
+    def _finish_cancelled(self, run_id, total_input_tokens, total_output_tokens, total_total_tokens):
         self._status = PatrolStatus.CANCELLED
         end_time = datetime.now(UTC8).isoformat()
         try:
             patrol_db.update_run(
-                run_id,
-                status="Cancelled",
-                end_time=end_time,
+                run_id, status="Cancelled", end_time=end_time,
                 input_tokens=total_input_tokens,
                 output_tokens=total_output_tokens,
                 total_tokens=total_total_tokens,
@@ -478,7 +469,6 @@ class PatrolService:
     # ── Gemini VLM inspection ─────────────────────────────────────
 
     def _build_inspection_system_prompt(self, settings: dict) -> str:
-        """Build a system prompt for VLM inspection calls."""
         return (
             "你是一個巡檢 AI 視覺分析助手。\n"
             "你會收到一張來自機器人攝影機的圖片和巡檢提示。\n"
@@ -489,45 +479,25 @@ class PatrolService:
             "請用繁體中文回答。"
         )
 
-    def _inspect_with_gemini(
-        self,
-        client: genai.Client,
-        model_id: str,
-        system_prompt: str,
-        point_name: str,
-        prompt: str,
-        jpeg_bytes: bytes,
-    ) -> dict:
-        """Call Gemini VLM for structured inspection of a single frame.
-
-        Returns:
-            dict with keys: is_ng, description, raw_response,
-                            input_tokens, output_tokens, total_tokens
-        """
+    def _inspect_with_gemini(self, client, model_id, system_prompt,
+                             point_name, prompt, jpeg_bytes) -> dict:
         try:
             user_prompt = f"巡檢點：{point_name}\n巡檢指示：{prompt}"
-
             config = types.GenerateContentConfig(
                 system_instruction=system_prompt,
                 response_mime_type="application/json",
                 response_schema=InspectionResult,
             )
-
             response = client.models.generate_content(
                 model=model_id,
                 contents=[
-                    types.Content(
-                        role="user",
-                        parts=[
-                            types.Part.from_text(text=user_prompt),
-                            types.Part.from_bytes(data=jpeg_bytes, mime_type="image/jpeg"),
-                        ],
-                    )
+                    types.Content(role="user", parts=[
+                        types.Part.from_text(text=user_prompt),
+                        types.Part.from_bytes(data=jpeg_bytes, mime_type="image/jpeg"),
+                    ])
                 ],
                 config=config,
             )
-
-            # Parse token usage
             usage = response.usage_metadata
             input_tokens = (usage.prompt_token_count or 0) if usage else 0
             output_tokens = (usage.candidates_token_count or 0) if usage else 0
@@ -539,48 +509,31 @@ class PatrolService:
                 is_ng = parsed.get("is_NG", False)
                 description = parsed.get("Description", "")
             except json.JSONDecodeError:
-                logger.warning("Failed to parse VLM JSON response: %s", raw_text[:200])
+                logger.warning("Failed to parse VLM JSON: %s", raw_text[:200])
                 is_ng = False
                 description = raw_text
 
             return {
-                "is_ng": is_ng,
-                "description": description,
+                "is_ng": is_ng, "description": description,
                 "raw_response": raw_text,
                 "input_tokens": input_tokens,
                 "output_tokens": output_tokens,
                 "total_tokens": total_tokens,
             }
-
         except Exception as e:
             logger.error("VLM inspection error at %s: %s", point_name, e)
             return {
-                "is_ng": False,
-                "description": f"Inspection error: {e}",
+                "is_ng": False, "description": f"Inspection error: {e}",
                 "raw_response": "",
-                "input_tokens": 0,
-                "output_tokens": 0,
-                "total_tokens": 0,
+                "input_tokens": 0, "output_tokens": 0, "total_tokens": 0,
             }
 
     # ── AI summary generation ─────────────────────────────────────
 
-    def _generate_summary(
-        self,
-        client: genai.Client,
-        model_id: str,
-        inspections: list[dict],
-    ) -> dict:
-        """Generate a patrol summary using Gemini.
-
-        Returns:
-            dict with keys: text, input_tokens, output_tokens, total_tokens
-        """
+    def _generate_summary(self, client, model_id, inspections) -> dict:
         try:
-            # Format inspection results as context
             lines = []
-            ng_count = 0
-            ok_count = 0
+            ng_count = ok_count = 0
             for insp in inspections:
                 status_str = "NG (異常)" if insp["is_ng"] else "OK (正常)"
                 if insp["is_ng"]:
@@ -599,42 +552,21 @@ class PatrolService:
                 f"以下是本次巡檢的結果摘要（{now_str}）：\n\n"
                 f"{context}\n\n"
                 f"共巡檢 {len(inspections)} 個點位，其中 {ok_count} 個正常、{ng_count} 個異常。\n\n"
-                f"請用繁體中文撰寫一份簡潔的巡檢總結報告，包含：\n"
-                f"1. 總體狀況概述\n"
-                f"2. 異常點位的詳細說明（如有）\n"
-                f"3. 建議的後續處理措施（如有異常）\n"
-                f"請保持專業、簡潔。"
+                f"請用繁體中文撰寫一份簡潔的巡檢總結報告。"
             )
 
-            response = client.models.generate_content(
-                model=model_id,
-                contents=prompt,
-            )
-
+            response = client.models.generate_content(model=model_id, contents=prompt)
             usage = response.usage_metadata
-            input_tokens = (usage.prompt_token_count or 0) if usage else 0
-            output_tokens = (usage.candidates_token_count or 0) if usage else 0
-            total_tokens = (usage.total_token_count or 0) if usage else 0
-
             return {
                 "text": response.text or "",
-                "input_tokens": input_tokens,
-                "output_tokens": output_tokens,
-                "total_tokens": total_tokens,
+                "input_tokens": (usage.prompt_token_count or 0) if usage else 0,
+                "output_tokens": (usage.candidates_token_count or 0) if usage else 0,
+                "total_tokens": (usage.total_token_count or 0) if usage else 0,
             }
-
         except Exception as e:
             logger.error("Summary generation error: %s", e)
-            return {
-                "text": f"報告生成失敗：{e}",
-                "input_tokens": 0,
-                "output_tokens": 0,
-                "total_tokens": 0,
-            }
+            return {"text": f"報告生成失敗：{e}", "input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
 
 
-# ---------------------------------------------------------------------------
 # Module-level singleton
-# ---------------------------------------------------------------------------
-
 patrol_service = PatrolService()

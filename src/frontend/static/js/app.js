@@ -221,11 +221,23 @@ function handleMessage(msg) {
 
         case 'function_call':
             addSystemMessage(`執行中: ${msg.name || ''}...`);
+            // Mute mic during function execution to avoid noise interference
+            if (currentMode === 'live' && settings.live_auto_interrupt === false) {
+                muteMic();
+                showExhibitionMute(true);
+            }
             break;
 
-        case 'function_result':
-            // Gemini will summarize; no direct display needed
+        case 'function_result': {
+            // Show analysis results from key FCs directly in chat
+            const r = msg.result || {};
+            const analysis = r.image_analysis || r.analysis || '';
+            if (analysis) {
+                const label = r.location ? `[${r.location}]` : '';
+                addBotMessage(`${label} ${analysis}`.trim());
+            }
             break;
+        }
 
         case 'turn_complete':
             hideTypingIndicator();
@@ -284,12 +296,20 @@ function handleMessage(msg) {
 }
 
 // ─── Chat UI ─────────────────────────────────────────
+function renderMarkdown(text) {
+    if (typeof marked !== 'undefined' && typeof DOMPurify !== 'undefined') {
+        const html = marked.parse(text, { breaks: true });
+        return DOMPurify.sanitize(html);
+    }
+    return escapeHtml(text);
+}
+
 function addBotMessage(text) {
     const container = document.getElementById('demo-chat-messages');
     if (!container) return;
     const bubble = document.createElement('div');
     bubble.className = 'chat-bubble robot';
-    bubble.innerHTML = `<div class="bubble-content">${escapeHtml(text)}</div>`;
+    bubble.innerHTML = `<div class="bubble-content markdown-body">${renderMarkdown(text)}</div>`;
     container.appendChild(bubble);
     container.scrollTop = container.scrollHeight;
     hideTypingIndicator();
@@ -316,17 +336,19 @@ function addSystemMessage(text) {
 }
 
 function showTypingIndicator() {
+    const container = document.getElementById('demo-chat-messages');
+    if (!container) return;
     let indicator = document.getElementById('typing-indicator');
     if (!indicator) {
         indicator = document.createElement('div');
         indicator.id = 'typing-indicator';
         indicator.className = 'chat-bubble robot typing';
         indicator.innerHTML = '<div class="typing-indicator"><span></span><span></span><span></span></div>';
-        document.getElementById('demo-chat-messages')?.appendChild(indicator);
     }
+    // Always re-append to end of container so it appears after latest messages
+    container.appendChild(indicator);
     indicator.style.display = '';
-    const container = document.getElementById('demo-chat-messages');
-    if (container) container.scrollTop = container.scrollHeight;
+    container.scrollTop = container.scrollHeight;
 }
 
 function hideTypingIndicator() {

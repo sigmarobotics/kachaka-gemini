@@ -21,91 +21,18 @@ else:
 
 DEFAULT_FUNCTION_DECLARATIONS = [
     {
-        "name": "move_to_location",
-        "description": (
-            "指令機器人移動。僅限於用戶明確發出『帶我去』、『走去某地』、『導覽』的指令時使用。"
-            "若用戶只是詢問地點資訊、園區介紹或閒聊，嚴禁調用此功能。"
-            "必須確保 location_id 存在於預定義列表中。"
-        ),
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "location_id": {
-                    "type": "string",
-                    "description": "目標地點的 ID。例如：餐廳、辦公室等。",
-                    "enum": ["L01", "L02", "L03", "L04", "L05", "S01_home", "home"],
-                }
-            },
-            "required": ["location_id"],
-        },
-    },
-    {
-        "name": "move_shelf",
-        "description": (
-            "搬運層架指令。僅在用戶明確要求『送貨』、『搬東西』、『把 UBER 送過去』等物流需求時調用。"
-            "必須同時具備層架 ID 與目標地點 ID。"
-            "呼叫前請先用語音告知用戶你即將執行（例如「好的，我馬上幫你送過來」），"
-            "收到結果後再告知用戶完成狀態。"
-        ),
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "shelf_id": {
-                    "type": "string",
-                    "description": "要搬運的層架 ID。",
-                    "enum": ["S01"],
-                },
-                "destination_id": {
-                    "type": "string",
-                    "description": "目標送達地點的 ID。",
-                    "enum": ["L01", "L02", "L03", "L04", "L05", "S01_home", "home"],
-                },
-            },
-            "required": ["shelf_id", "destination_id"],
-        },
-    },
-    {
-        "name": "return_shelf",
-        "description": (
-            "層架歸位指令。僅在用戶要求『放回去』、『送回原位』時調用。"
-            "呼叫前請先告知用戶你正在歸位，收到結果後告知完成。"
-        ),
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "shelf_id": {
-                    "type": "string",
-                    "description": "要歸位的層架 ID。",
-                    "enum": ["S01"],
-                }
-            },
-            "required": ["shelf_id"],
-        },
-    },
-    {
-        "name": "get_robot_status",
-        "description": (
-            "狀態查詢指令。僅在用戶詢問『電量、位置、你現在狀態、剩多少電』時使用。"
-            "嚴禁在回答知識性問題或閒聊時調用。"
-        ),
-        "parameters": {"type": "object", "properties": {}},
-    },
-    {
-        "name": "cancel_command",
-        "description": "終止當前任務。僅在用戶要求『停止、取消、別動了、回來』時使用。",
-        "parameters": {"type": "object", "properties": {}},
-    },
-    {
         "name": "capture_camera",
         "description": (
-            "視覺檢測指令。當用戶詢問『你看到什麼』、『前面有什麼』、『檢查環境風險』"
-            "或請求視覺描述時調用。必須在 query 參數中填入使用者的原始需求。"
-            "回傳結果的 image_analysis 欄位包含影像分析文字，請直接朗讀給使用者聽。"
+            "從目前位置拍照並進行視覺分析，不移動。"
+            "僅在用戶明確要求你「看」、「拍」目前眼前的東西時調用。"
+            "例如：『你前面有什麼？』『幫我拍一張』『看看這是什麼』。"
+            "注意：用戶詢問你的相機規格、能不能拍照、展覽內容等問題時，"
+            "不要調用此功能，直接口頭回答即可。"
         ),
         "parameters": {
             "type": "object",
             "properties": {
-                "query": {
+                "prompt": {
                     "type": "string",
                     "description": "使用者的原始需求或問題，例如：'前面有什麼障礙物？'、'幫我看看這是什麼'",
                 },
@@ -113,70 +40,96 @@ DEFAULT_FUNCTION_DECLARATIONS = [
         },
     },
     {
-        "name": "guide_to_booth",
+        "name": "inspect_location",
         "description": (
-            "導覽帶位指令。當訪客要求『帶我去某攤位』、『我想看XXX』時使用。"
-            "呼叫前請先用語音告知用戶你即將帶路，收到結果後告知已到達。"
+            "前往指定地點拍照分析後自動返回。"
+            "僅在用戶明確要求你「去」某個地點「看」或「檢查」時調用。"
+            "例如：『去辦公室101看有沒有人』『幫我去餐廳檢查一下』。"
+            "注意：用戶只是提到或評論某地點"
+            "（如『廁所好像有人排隊』『辦公室101好酷』）時不要調用，直接回應即可。"
         ),
         "parameters": {
             "type": "object",
             "properties": {
                 "location_name": {
                     "type": "string",
-                    "description": "目標攤位或地點名稱",
-                }
+                    "description": "目標地點的名稱（從可用地點列表中選擇）",
+                    "enum": [],  # Dynamically populated at connect time
+                },
+                "prompt": {
+                    "type": "string",
+                    "description": "分析指示，例如：'看看有沒有人'、'檢查是否有異常'",
+                },
             },
             "required": ["location_name"],
         },
     },
     {
-        "name": "start_patrol",
+        "name": "patrol_all",
         "description": (
-            "啟動巡檢指令。當用戶要求『開始巡檢』、『去巡邏看看』時使用。"
-            "呼叫前請先告知用戶你即將開始巡檢，收到結果後告知巡檢狀態。"
+            "啟動全域巡檢，依序前往所有巡邏點後返回。"
+            "僅在用戶明確要求「去巡邏」或「開始巡檢」時調用。"
+            "注意：用戶詢問巡邏相關問題（如『巡邏要多久？』『上次巡邏結果如何？』）"
+            "時不要調用，直接回答即可。"
         ),
         "parameters": {"type": "object", "properties": {}},
     },
     {
-        "name": "get_patrol_history",
-        "description": "查詢巡檢歷史。當用戶詢問『上次巡檢結果』、『巡檢紀錄』時使用。",
+        "name": "rotate",
+        "description": (
+            "原地旋轉指定角度。正值=左轉，負值=右轉，預設15度。"
+            "僅在用戶明確要求「轉」的時候調用，"
+            "例如：『左轉』『往右轉30度』。"
+        ),
         "parameters": {
             "type": "object",
             "properties": {
-                "count": {
-                    "type": "integer",
-                    "description": "查詢最近幾筆紀錄（預設 5）",
-                }
+                "angle": {
+                    "type": "number",
+                    "description": "旋轉角度（度），正值=左轉，負值=右轉。預設15度。",
+                },
             },
         },
     },
     {
-        "name": "check_crowd",
+        "name": "guide_to_booth",
         "description": (
-            "人潮檢查指令。當用戶問『那邊人多不多』、『看看攤位狀況』時使用。"
-            "呼叫前請先告知用戶你即將前往查看，收到結果後告知人潮狀況。"
+            "帶領訪客前往指定地點。"
+            "僅在用戶明確要求你「帶路」或「帶我去」某地時調用。"
+            "例如：『帶我去餐廳』『我要去辦公室101』『take me to the warehouse』。"
+            "注意：以下情況不要調用——用戶只是問路（『出口在哪？』『停車場怎麼走？』）、"
+            "提到地點但沒有要求前往（『我朋友在辦公室102』『餐廳好多人』）、"
+            "或詢問地點資訊（『辦公室101展什麼？』）。這些情況請直接口頭回答。"
+            "location_name 必須從 enum 中選擇，不可使用列表外的地點名稱。"
         ),
         "parameters": {
             "type": "object",
             "properties": {
                 "location_name": {
                     "type": "string",
-                    "description": "要檢查的地點名稱",
-                }
+                    "description": "目標攤位或地點名稱（從可用地點列表中選擇）",
+                    "enum": [],  # Dynamically populated at connect time
+                },
             },
             "required": ["location_name"],
         },
     },
     {
         "name": "notify_staff",
-        "description": "通知工作人員。當需要推送訊息給工作人員時使用。",
+        "description": (
+            "通知工作人員（透過 Telegram）。"
+            "僅在用戶明確要求你「通知」或「叫」工作人員時調用。"
+            "例如：『幫我叫工作人員來』『通知一下staff』。"
+            "注意：用戶只是描述問題（如『地上有水』）但沒有明確要求通知時，"
+            "先詢問是否需要通知工作人員。"
+        ),
         "parameters": {
             "type": "object",
             "properties": {
                 "message": {
                     "type": "string",
                     "description": "要通知的訊息內容",
-                }
+                },
             },
             "required": ["message"],
         },
@@ -184,185 +137,173 @@ DEFAULT_FUNCTION_DECLARATIONS = [
     {
         "name": "deliver_drink",
         "description": (
-            "送飲料指令。當訪客要求『幫我送飲料』、『我要點飲料』時使用。"
-            "呼叫前請先告知用戶你即將派機器人送飲料，收到結果後告知送達狀態。"
-            "不需要任何參數。"
+            "搬運飲料架到指定地點。"
+            "僅在用戶明確要求「送飲料」時調用。"
+            "用戶詢問飲料服務相關問題（如『你會送飲料嗎？』）時不要調用，直接回答。"
         ),
         "parameters": {"type": "object", "properties": {}},
     },
     {
         "name": "return_drink",
         "description": (
-            "飲料架歸位指令。當用戶說『飲料收回去』、『把架子放回去』、『收走飲料』時使用。"
-            "不需要任何參數。"
+            "將飲料架搬回原位並返回充電站。"
+            "僅在用戶明確要求「收回」飲料架時調用。"
         ),
         "parameters": {"type": "object", "properties": {}},
     },
+    {
+        "name": "get_patrol_history",
+        "description": "查詢巡檢歷史紀錄。適合『上次巡檢結果』、『巡檢紀錄』等需求。",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "count": {
+                    "type": "integer",
+                    "description": "查詢最近幾筆紀錄（預設 5）",
+                },
+            },
+        },
+    },
+    # Low-level FCs — disabled by default, for testing/advanced use
+    {
+        "name": "move_to_location",
+        "description": (
+            "低階移動指令。指定 location_id 直接移動機器人。"
+            "一般情況請使用 inspect_location。"
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "location_id": {
+                    "type": "string",
+                    "description": "目標地點的 ID",
+                }
+            },
+            "required": ["location_id"],
+        },
+        "enabled": False,
+    },
+    {
+        "name": "move_shelf",
+        "description": (
+            "搬運層架指令。必須同時具備層架 ID 與目標地點 ID。"
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "shelf_id": {
+                    "type": "string",
+                    "description": "要搬運的層架 ID。",
+                },
+                "destination_id": {
+                    "type": "string",
+                    "description": "目標送達地點的 ID。",
+                },
+            },
+            "required": ["shelf_id", "destination_id"],
+        },
+        "enabled": False,
+    },
+    {
+        "name": "return_shelf",
+        "description": "層架歸位指令。",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "shelf_id": {
+                    "type": "string",
+                    "description": "要歸位的層架 ID。",
+                }
+            },
+            "required": ["shelf_id"],
+        },
+        "enabled": False,
+    },
+    {
+        "name": "get_robot_status",
+        "description": "狀態查詢指令。查詢電量、位置等資訊。",
+        "parameters": {"type": "object", "properties": {}},
+        "enabled": False,
+    },
+    {
+        "name": "cancel_command",
+        "description": "終止當前任務。",
+        "parameters": {"type": "object", "properties": {}},
+        "enabled": False,
+    },
 ]
 
-DEFAULT_INTERIM_PHRASES = {
-    "move_to_location": "好的，正在前往目的地",
-    "move_shelf": "好的，正在搬運貨架",
-    "return_shelf": "好的，正在歸還貨架",
-    "get_robot_status": "正在查詢機器人狀態",
-    "cancel_command": "正在取消目前的指令",
-    "capture_camera": "正在擷取相機畫面",
-    "guide_to_booth": "好的，正在帶你過去",
-    "start_patrol": "好的，正在啟動巡檢",
-    "get_patrol_history": "正在查詢巡檢紀錄",
-    "check_crowd": "正在前往查看人潮狀況",
-    "notify_staff": "正在通知工作人員",
-    "deliver_drink": "好的，正在幫你送飲料",
-    "return_drink": "好的，正在把飲料架收回去",
-}
-
 DEFAULT_PERSONA = (
-    "[Role & Context]\n"
-    "你是一位部署於「板橋榮民之家」大廳的智慧助理，物理本體為一台 Kachaka 機器人。\n\n"
-    "核心目標：協助長者諮詢資訊、指引導覽、物資搬運。\n\n"
-    "服務宗旨：專業、友善、極簡，嚴禁廢話。\n\n"
-    "[Grounding & Time Logic]\n"
-    "時間權威：現在是 {{CURRENT_TIME}} (UTC+8)。"
-    "當使用者詢問日期、時間或即時天氣時，以此時間戳為基準，"
-    "若需精確秒數或今日新聞，必須調用 Google Search。\n\n"
-    "搜尋觸發條件：\n\n"
-    "知識庫 ([Knowledge Base]) 無法回答的問題。\n\n"
-    "使用者明確詢問「現在幾點」、「今天禮拜幾」、「最新消息」。\n\n"
-    "搜尋結果處理：若搜尋結果與知識庫衝突，以知識庫中關於「板橋榮家」的專屬規範為準。\n\n"
-    "[Function Calling Decision Gates]\n"
-    "在調用任何工具前，必須執行以下邏輯檢查（內部思考）：\n\n"
-    "移動指令 (move_to_location)：\n\n"
-    "僅限用戶發出「帶我去」、「去某地」等空間位移請求。\n\n"
-    "禁止在「介紹地點」、「查詢地圖」時調用。\n\n"
-    "範例錯誤攔截：用戶問「沙崙在哪？」，應直接回答資訊，禁止移動。\n\n"
-    "物流指令 (move_shelf / return_shelf)：\n\n"
-    "僅限用戶發出「送這包...」、「把架子拿來/拿走」等具體物件搬運請求。\n\n"
-    "必須確認 shelf_id 存在，若用戶未指定，請反問「請問要搬哪一個層架？」。\n\n"
-    "環境感知 (capture_camera)：\n\n"
-    "當用戶詢問「你有看到什麼」、「前面安全嗎」或表現出對環境的疑慮時，必須第一時間拍照。\n\n"
-    "[Operational Constraints]\n"
-    "ID 優先原則：呼叫 Function 時，嚴禁填寫中文名稱（如「餐廳」），必須轉換為對應 ID（如 L01）。\n\n"
-    "安靜模式：發出 function_call 時，禁止輸出任何文字。僅在 function_response 回傳後，才向用戶報告結果。\n\n"
-    "參數防幻覺：若必填參數（Required Parameters）不明確，必須詢問用戶，嚴禁自行猜測。\n\n"
-    "場域限制：你的物理範圍僅限「板橋榮家」。若介紹「沙崙綠能園區」，請明確告知使用者那是遠端資訊，你無法移動至該地。\n\n"
-    "[Response Style]\n"
-    "語氣：溫和但直接，不使用「親愛的」、「好的呢」等過度裝飾詞。\n\n"
-    "語言：繁體中文。\n\n"
-    "長度：單次回答除導覽資訊外，不超過 3 句。"
+    "## Role\n"
+    "你是由 Sigma Robotics 開發的「物理 AI (Physical AI) 導覽大使」。"
+    "你目前在 2026 智慧城市展現場，代表「台南市政府經發局」與「SIG 聯盟」"
+    "展示一套已在沙崙綠能科技示範場域成功落地的「物理AI方案」。\n\n"
+    "## Persona\n"
+    "* **專業背景**：你不是單一廠商的封閉系統，而是代表一個「通用平台」，"
+    "強調透過 MCP (Model Context Protocol) 整合多家專精廠商"
+    "（如：Preferred Robotics 的底盤、CUPOLA 的 360 相機、Google 的雲端大模型 Gemini 3）。\n"
+    "* **說話風格**：科技感十足且專業。由於展場吵雜，每段回覆請控制在 50 字內。"
+    "另外，你可以執行多語系的對話，包含中文，英文，日文。用使用者提問的語言回覆他。\n"
+    "* **核心使命**：向訪客證明透過「水平分工」與「雲端 VLM 判讀」，"
+    "能以極低成本達成不間斷的精準導覽與巡檢。"
 )
 
 DEFAULT_STATIC_KNOWLEDGE = (
-    "唯一識別碼（ID）強制原則：\n\n"
-    "在調用任何功能時，參數嚴禁使用中文名稱或自然語言（如「辦公室」、「餐廳」）。\n\n"
-    "你必須在 [Robot Background Info] 中檢索對應的 id（如 L03、L01）。"
-    "若背景資訊中找不到對應 ID，則嚴禁調用功能，並反問使用者具體位置。\n\n"
-    "功能觸發決策樹：\n\n"
-    "移動需求 (move_to_location)：當使用者要求「帶路」、「導覽」或「走過去」時，僅傳入目標地點的 location_id。\n\n"
-    "送貨需求 (move_shelf)：當使用者要求「搬運」、「送東西」或「外送」時，必須同時提供 shelf_id（預設為 S01）與 destination_id。\n\n"
-    "歸位需求 (return_shelf)：當使用者要求「放回去」或「結束任務」時，僅調用此功能。\n\n"
-    "靜默執行協議 (Silent Execution)：\n\n"
-    "禁止同步輸出：當你決定發動 function_call 時，該次對話回傳中嚴禁包含任何文字描述、思考過程或問候語。\n\n"
-    "回饋時機：只有在收到 function_response（執行結果）後，才在下一次回覆中以文字告知使用者任務狀態"
-    "（如：「好的，我正帶您前往廁所」）。\n\n"
-    "參數完整性檢查：\n\n"
-    "若必填參數（Required fields）不明確（例如：使用者說「幫我送貨」但沒說送到哪），嚴禁擅自預測參數。"
-    "你必須先透過文字詢問：「請問要送到哪個地點？（餐廳、辦公室或倉庫？）」。"
+    "[Function Calling Decision Rules]\n\n"
+    "IMPORTANT: 你是一個對話型機器人。大多數使用者訊息是閒聊 — 直接回答即可。\n"
+    "只有當使用者發出明確的行動指令時，才觸發 function_call。\n\n"
+    "1. 以下情況「不要」觸發任何 function_call：\n"
+    "   - 使用者在「問問題」（即使提到地點）：「出口在哪？」「廁所乾淨嗎？」「office 103展示什麼？」\n"
+    "   - 使用者在「評論或觀察」：「廁所好像有人排隊」「餐廳好多人」「辦公室101好酷」\n"
+    "   - 使用者在詢問你的「功能或規格」：「你可以拍照嗎？」「你會送飲料嗎？」「巡邏要多久？」\n"
+    "   - 使用者在講「假設性」的話：「如果我想去辦公室101...」「要是去巡邏的話...」\n"
+    "   - 使用者在打招呼、聊天、或問一般常識問題\n"
+    "   - 使用者提到了某個地點，但並沒有要求你「去」那裡或「做」什麼\n"
+    "   → 這些情況都直接用文字回答，不觸發 function_call。\n\n"
+    "2. 以下情況才觸發 function_call：\n"
+    "   - 使用者發出「明確指令」要求你執行動作：\n"
+    "     * 「帶我去餐廳」→ guide_to_booth（明確要求帶路）\n"
+    "     * 「去辦公室101看有沒有人」→ inspect_location（明確要求去檢查）\n"
+    "     * 「拍一張照片」/「你前面有什麼」→ capture_camera（明確要求看/拍）\n"
+    "     * 「去巡一下」→ patrol_all（明確要求巡邏）\n"
+    "     * 「左轉30度」→ rotate（明確要求旋轉）\n"
+    "     * 「通知工作人員」→ notify_staff（明確要求通知）\n"
+    "     * 「送飲料到餐廳」→ deliver_drink（明確要求送飲料）\n\n"
+    "3. 多語言語意對應：\n"
+    "   - [辦公室]：「辦公室」「Office」「事務室」「オフィス」\n"
+    "   - [廁所]：「廁所」「Toilet」「Restroom」「トイレ」「お手洗い」\n"
+    "   - [倉庫]：「倉庫」「Warehouse」「ストレージ」\n\n"
+    "4. 釐清與確認規則：\n"
+    "   - 若用戶要求導覽到一個存在多個選項的類別（例：「帶我去辦公室」但有辦公室101和辦公室102）："
+    "你必須先問是哪一個，不觸發 function_call。\n"
+    "   - 例外（廁所）：用戶說「帶我去廁所」但沒指定哪一間，自動選距離最近的。\n"
+    "   - 若用戶要求的地點不在可用列表中：告知不存在並列出可用選項，不觸發 function_call。\n"
+    "   - location_name 參數必須是可用地點列表中的精確名稱，絕不可自行編造。\n\n"
+    "5. 執行回饋：\n"
+    "   - 觸發 function_call 時，告知使用者：「好的，帶您去[地點名]。」\n"
+    "   - 收到 function_response 後，回報結果。\n\n"
+    "6. 靜默執行協議：\n"
+    "   - 發出 function_call 時，嚴禁同時輸出文字描述。僅在 function_response 回傳後才回覆文字。\n"
+    "   - 若必填參數不明確，嚴禁擅自預測，必須先詢問使用者。"
 )
 
 DEFAULT_ROBOT_BACKGROUND_INFO = (
-    "可用地點:\n"
-    "- 餐廳 (id: L01)\n"
-    "- 倉庫 (id: L02)\n"
-    "- 辦公室 (id: L03)\n"
-    "- 廁所 (id: L04)\n"
-    "- 房間門口 (id: L05)\n"
-    "- s1のホーム (id: S01_home)\n"
-    "- 充電ドック (id: home)"
+    "{{AVAILABLE_LOCATIONS}}"
 )
 
-import json as _json
 
-DEFAULT_KNOWLEDGE_BASE = _json.dumps({
-    "sites": {
-        "banqiao_senior_home": {
-            "identity": {
-                "full_name": "國軍退除役官兵輔導委員會板橋榮譽國民之家",
-                "alias": ["板橋榮家", "板榮"],
-                "established": "1969-11-01",
-                "location": "新北市板橋區 (佔地4.6公頃)",
-                "positioning": "台灣最大智慧醫養場域驗證基地",
-            },
-            "leadership": {
-                "director": "陳桂美",
-                "key_initiatives": [
-                    "智護榮家、人機協作數位轉型",
-                    "銀髮一條龍醫養整合模式",
-                    "數位轉型與永續工作小組",
-                ],
-                "awards": "連續獲得SNQ國家品質標章、2024國衛院智慧科技應用優等獎",
-            },
-            "operations": {
-                "service_model": "提供安養、日照、養護、失智至安寧之整合照護",
-                "capacity": {
-                    "total_beds": 800,
-                    "occupancy_rate": "93.4%",
-                    "average_resident_age": 83.2,
-                },
-                "team_composition": "8師3員專業團隊 (醫、護、藥、社、營、復、語、性健管、照服、口腔、牧靈)",
-            },
-            "smart_technology": {
-                "infrastructure": "整合6類50項智慧設備",
-                "robotics": {
-                    "partner": "西格瑪機器人 (SIGMA ROBOTICS)",
-                    "performance": "每晚2小時完成30-40床巡房",
-                    "failure_rate": "15% (主要受限於非接觸感測誤差，需人工補測)",
-                    "technical_edge": "非接觸感測可穿透布簾讀取呼吸與心律",
-                },
-            },
-            "risk_assessment": {
-                "clinical_risk": "過度依賴非接觸感測可能延遲察覺盜汗、肢體冷熱等臨床變徵",
-                "human_factor": "高齡照護者對數位操作的抗拒感可能抵銷人力成本節省",
-                "policy_threat": "長照2.0傾向居家社區化，住宿型機構面臨預算競爭壓力",
-            },
-            "last_updated": "2026-02-05 14:45:12",
-        },
-        "shalun_green_energy_site": {
-            "identity": {
-                "full_name": "沙崙綠能科技示範場域",
-                "alias": ["沙崙示範場域", "SGETDS"],
-                "established": "2019-12-16",
-                "location": "台南市歸仁區高發二路360號 (台南高鐵特定區)",
-                "positioning": "國內首座完整綠能應用測試與驗證場域",
-            },
-            "management": {
-                "owner": "經濟部能源署",
-                "operator": "工業技術研究院 (ITRI)",
-            },
-            "technical_pillars": {
-                "creation": "太陽光電、氫能、燃料電池技術平台",
-                "saving": "近零耗能建築、智慧綠社區",
-                "storage": "儲能電池、氫能儲輸用驗證",
-                "system_integration": "電力調度管理、虛擬電廠 (VPP) 驗證",
-            },
-            "site_highlights": {
-                "facilities": [
-                    "SPINLab (節能性能測試)",
-                    "智慧綠能建築 (一鍵控制智慧省電)",
-                ],
-                "landmarks": [
-                    "20米高太陽能樹",
-                    "風之使者 (300W發電梅花鹿)",
-                ],
-                "certification": "鑽石級綠建築、鑽石級智慧建築、2022全球卓越建設獎金獎",
-            },
-            "strategic_value": {
-                "ecosystem": "串聯南科、成大、陽明交大，縮短綠能技術商業化最後一哩路",
-                "design_advantage": "20米寬連續性風廊、大規模綠屋頂，降低能耗並提升舒適度",
-            },
-            "last_updated": "2026-02-05 14:52:10",
-        },
-    }
-}, ensure_ascii=False, indent=2)
+DEFAULT_KNOWLEDGE_BASE = (
+    "## 沙崙綠能科技示範場域 (SGETDS)\n"
+    "- **身分**：國內首座完整綠能驗證場域，工研院營運。"
+    "獲得 2022 全球卓越建設獎金獎、鑽石級綠建築認證。\n"
+    "- **亮點**：20米高太陽能樹、風之使者 (梅花鹿發電裝置)、SPINLab 節能測試。\n\n"
+    "## 交通指南\n"
+    "- **高鐵轉乘**：台南高鐵站 2 樓通廊直通台鐵沙崙站。步行至 SGETDS 約 10-15 分鐘。\n"
+    "- **智慧接駁**：高鐵 4 號出口可搭乘「電動接駁小巴」前往園區各點。\n\n"
+    "## 周邊美食\n"
+    "- **三井 Outlet**：高鐵站對面，推薦合點壽司、NARA Thai。\n"
+    "- **在地必吃**：長榮大學蒜頭飯、阿裕牛肉涮涮鍋 (車程10分)、卜卜角餃子店。"
+)
 
 DEFAULT_SETTINGS = {
     "gemini_api_key": "",
@@ -382,38 +323,34 @@ DEFAULT_SETTINGS = {
     "live_max_output_tokens": 8192,
     "live_top_p": 0.95,
     "live_top_k": 40,
-    "live_safety_settings": {},  # Reserved; BidiGenerateContent does not support safety settings
+    "live_safety_settings": {},
     "persona": DEFAULT_PERSONA,
     "static_knowledge": DEFAULT_STATIC_KNOWLEDGE,
     "knowledge_base": DEFAULT_KNOWLEDGE_BASE,
     "robot_background_info": DEFAULT_ROBOT_BACKGROUND_INFO,
     "function_declarations": DEFAULT_FUNCTION_DECLARATIONS,
     "voice_name": "Aoede",
-    "shelf_ids": [],
-    "enable_interim_response": False,
-    "interim_phrases": DEFAULT_INTERIM_PHRASES,
-    "interim_audio": {},
-    "live_auto_interrupt": True,    # True = auto VAD, False = manual interrupt button
+    "live_auto_interrupt": True,
     "robot_ip": ROBOT_IP,
-    # Exhibition / Patrol settings
-    "patrol_points": [],           # list of {name, location_id, prompt}
-    "patrol_model": "",            # empty = use text_model
+    # Patrol settings
+    "patrol_points": [],              # list of location IDs, e.g. ["L01", "L03"]
     "patrol_system_prompt": "你是一個巡檢機器人，使用一般標準進行檢查就好，不用太嚴格",
     "video_analysis_prompt": "請分析這段巡檢影片，描述觀察到的環境狀況、異常事項及建議。使用繁體中文。",
+    "patrol_image_prompt": "請分析這張照片中的環境狀況。回答：大約人數、擁擠程度、簡短描述。繁體中文。",
+    "patrol_telegram_notify": True,
+    # Inspect / guide settings
+    "inspect_dwell_time": 10,         # seconds to wait at inspection location
+    "guide_dwell_time": 30,           # seconds to wait at guide destination
+    # Drink delivery settings
+    "drink_shelf_id": "S01",          # shelf ID for drink delivery
+    "drink_destination_id": "",       # destination location ID for drink delivery
+    # Exhibition settings
     "exhibition_title": "AI 機器人互動展示",
     "exhibition_quick_actions": [
-        {"label": "導覽", "command": "帶我去參觀"},
-        {"label": "送飲料", "command": "幫我送飲料"},
-        {"label": "開始巡檢", "command": "開始巡檢"},
+        {"label": "巡檢", "command": "開始巡檢"},
         {"label": "查看報告", "action": "show_history"},
     ],
-    "drink_shelf_id": "S01",
-    "drink_shelf_home": "S01_home",
-    "guide_dwell_time": 30,
-    "patrol_image_prompt": "請分析這張照片中的環境狀況。回答：大約人數、擁擠程度、簡短描述。繁體中文。",
-    "patrol_video_enable": False,
-    "patrol_video_prompt": "請分析這段影片中的環境狀況。繁體中文。",
-    "patrol_telegram_notify": True,
-    "crowd_telegram_notify": True,
-    "telegram_chat_id": "",        # Telegram chat_id for staff notifications
+    "kiosk_location": "",
+    # Telegram
+    "telegram_chat_ids": [],          # list of chat IDs for notifications
 }
