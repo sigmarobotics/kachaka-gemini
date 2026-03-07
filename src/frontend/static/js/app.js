@@ -14,6 +14,12 @@ let statusPollInterval = null;
 let settings = {};
 let sessionTokenTotal = 0;
 
+// ─── Exhibition Mute State Machine ──────────────────
+// Unified mic mute control covering: audio response → FC execution → post-FC response
+// Mute starts on first audio/function_call, unmute only at final turn_complete after all work is done.
+let fcExecuting = false;      // true between function_call and function_result
+let muteBufferTimer = null;   // delayed unmute timer (for gap between turn_complete → function_call)
+
 // ─── Tab Switching ───────────────────────────────────
 window.switchTab = function(tabName) {
     document.querySelectorAll('.tab-content').forEach(el => el.style.display = 'none');
@@ -42,6 +48,12 @@ async function init() {
     const titleEl = document.getElementById('demo-title');
     if (titleEl && settings.exhibition_title) {
         titleEl.textContent = settings.exhibition_title;
+    }
+
+    // Toggle camera feed visibility (keep map visible)
+    const cameraFeed = document.querySelector('.camera-feed');
+    if (cameraFeed) {
+        cameraFeed.style.display = settings.show_camera === false ? 'none' : '';
     }
 
     // Set up mode toggle
@@ -201,17 +213,22 @@ function handleMessage(msg) {
             showSpeaking();
             playAudioChunk(msg.data);
             updateInterruptBtn(true);
-            // Exhibition mode: mute mic while AI is speaking
+            // Exhibition mode: mute mic during entire AI response cycle
             if (settings.live_auto_interrupt === false) {
+                clearTimeout(muteBufferTimer);
+                muteBufferTimer = null;
                 muteMic();
                 showExhibitionMute(true);
             }
             break;
 
         case 'interrupted':
-            // User interrupted AI — stop playback, resume listening
+            // User interrupted AI — stop playback, resume listening immediately
             stopPlayback();
             updateInterruptBtn(false);
+            clearTimeout(muteBufferTimer);
+            muteBufferTimer = null;
+            fcExecuting = false;
             if (settings.live_auto_interrupt === false) {
                 unmuteMic();
                 showExhibitionMute(false);
@@ -221,7 +238,10 @@ function handleMessage(msg) {
 
         case 'function_call':
             addSystemMessage(`執行中: ${msg.name || ''}...`);
-            // Mute mic during function execution to avoid noise interference
+            fcExecuting = true;
+            // Cancel any pending unmute — FC arrived during gap A
+            clearTimeout(muteBufferTimer);
+            muteBufferTimer = null;
             if (currentMode === 'live' && settings.live_auto_interrupt === false) {
                 muteMic();
                 showExhibitionMute(true);
@@ -229,6 +249,10 @@ function handleMessage(msg) {
             break;
 
         case 'function_result': {
+            fcExecuting = false;
+            // Don't unmute here — post-FC audio response is expected (gap B).
+            // If no further audio/turn_complete arrives, the buffer in turn_complete
+            // already handles the unmute.
             // Show analysis results from key FCs directly in chat
             const r = msg.result || {};
             const analysis = r.image_analysis || r.analysis || '';
@@ -243,19 +267,26 @@ function handleMessage(msg) {
             hideTypingIndicator();
             updateInterruptBtn(false);
             if (currentMode === 'live') {
-                // Let queued audio finish playing naturally before unmuting mic.
+                if (fcExecuting) {
+                    // FC is still running — stay muted.
+                    // This turn_complete is from the ack audio before toolCall.
+                    break;
+                }
+                // Defer unmute to bridge gap A (turn_complete → function_call)
+                // and let queued audio finish (gap after playback).
                 const remainMs = getPlaybackRemainingMs();
-                if (settings.live_auto_interrupt === false && remainMs > 0) {
-                    setTimeout(() => {
+                const muteBufferMs = (settings.mute_buffer_s ?? 1.5) * 1000;
+                const bufferMs = Math.max(remainMs + 200, muteBufferMs);
+                if (settings.live_auto_interrupt === false) {
+                    clearTimeout(muteBufferTimer);
+                    muteBufferTimer = setTimeout(() => {
+                        muteBufferTimer = null;
+                        if (fcExecuting) return; // FC arrived late, stay muted
                         unmuteMic();
                         showExhibitionMute(false);
                         showListening();
-                    }, remainMs + 200);  // +200ms buffer
+                    }, bufferMs);
                 } else {
-                    if (settings.live_auto_interrupt === false) {
-                        unmuteMic();
-                        showExhibitionMute(false);
-                    }
                     showListening();
                 }
             } else {
@@ -409,6 +440,9 @@ async function switchMode(newMode) {
         stopMic();
         stopPlayback();
         hideWaveform();
+        clearTimeout(muteBufferTimer);
+        muteBufferTimer = null;
+        fcExecuting = false;
         unmuteMic();
         showExhibitionMute(false);
     }
