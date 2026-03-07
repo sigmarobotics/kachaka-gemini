@@ -1,0 +1,11 @@
+services:
+  kachaka-gemini:
+    image: ghcr.io/sigma-snaken/kachaka-gemini:latest
+    container_name: kachaka-gemini
+    ports:
+      - "9000:9000"
+    environment:
+      - ROBOT_IP=${ROBOT_IP:-192.168.125.103:26400}
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped

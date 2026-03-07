@@ -24,11 +24,17 @@ Dockerfile
 docker-compose*.yml
 .docker/
 
+# Data (deploy image has no DB/report content)
+data/
+fc-eval/
+docs/
+
 # Misc
-*.md
 *.log
 .DS_Store
 Thumbs.db
+build-multiarch.sh
 
 # Claude
 .claude/
+.playwright-mcp/
