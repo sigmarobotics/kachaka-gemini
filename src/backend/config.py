@@ -279,11 +279,9 @@ DEFAULT_STATIC_KNOWLEDGE = (
     "   - 例外（廁所）：用戶說「帶我去廁所」但沒指定哪一間，自動選距離最近的。\n"
     "   - 若用戶要求的地點不在可用列表中：告知不存在並列出可用選項，不觸發 function_call。\n"
     "   - location_name 參數必須是可用地點列表中的精確名稱，絕不可自行編造。\n\n"
-    "5. 執行回饋：\n"
-    "   - 觸發 function_call 時，告知使用者：「好的，帶您去[地點名]。」\n"
-    "   - 收到 function_response 後，回報結果。\n\n"
-    "6. 靜默執行協議：\n"
-    "   - 發出 function_call 時，嚴禁同時輸出文字描述。僅在 function_response 回傳後才回覆文字。\n"
+    "5. 執行協議：\n"
+    "   - 觸發 function_call 時，可以簡短確認（如「好的，馬上去」），但嚴禁預測或描述尚未收到的執行結果。\n"
+    "   - 收到 function_response 後，再回報實際結果。\n"
     "   - 若必填參數不明確，嚴禁擅自預測，必須先詢問使用者。"
 )
 
@@ -331,6 +329,8 @@ DEFAULT_SETTINGS = {
     "function_declarations": DEFAULT_FUNCTION_DECLARATIONS,
     "voice_name": "Aoede",
     "live_auto_interrupt": True,
+    "mute_buffer_s": 1.5,
+    "show_camera": True,
     "robot_ip": ROBOT_IP,
     # Patrol settings
     "patrol_points": [],              # list of location IDs, e.g. ["L01", "L03"]

@@ -109,6 +109,12 @@ export async function loadSettings() {
         if (patrolTelegramNotify) patrolTelegramNotify.checked = settings.patrol_telegram_notify !== false;
         if (liveAutoInterrupt) liveAutoInterrupt.checked = settings.live_auto_interrupt !== false;
 
+        const muteBufferS = document.getElementById('mute-buffer-s');
+        if (muteBufferS) muteBufferS.value = settings.mute_buffer_s ?? 1.5;
+
+        const showCamera = document.getElementById('show-camera');
+        if (showCamera) showCamera.checked = settings.show_camera !== false;
+
         // Telegram chat IDs (textarea, one per line)
         const chatIdsTextarea = document.getElementById('telegram-chat-ids');
         if (chatIdsTextarea) {
@@ -128,6 +134,9 @@ export async function loadSettings() {
 
         // Load location options for kiosk location
         loadKioskLocationOptions(settings.kiosk_location || '');
+
+        // Load drink shelf dropdown
+        loadDrinkShelfOptions(settings.drink_shelf_id || '');
 
         // Load patrol point checkboxes
         renderPatrolCheckboxes(settings.patrol_points || []);
@@ -265,10 +274,12 @@ async function connectRobot() {
         const data = await res.json();
         if (data.ok) {
             if (statusEl) { statusEl.textContent = `Connected (serial: ${data.serial})`; statusEl.style.color = 'var(--mint)'; }
-            // Refresh patrol checkboxes after connecting
+            // Refresh cached data after connecting
             _cachedLocations = null;
+            _cachedShelves = null;
             const settings = await (await fetch('/api/settings')).json();
             renderPatrolCheckboxes(settings.patrol_points || []);
+            loadDrinkShelfOptions(settings.drink_shelf_id || '');
         } else {
             if (statusEl) { statusEl.textContent = `Failed: ${data.error}`; statusEl.style.color = 'var(--danger)'; }
         }
@@ -870,6 +881,38 @@ async function loadKioskLocationOptions(selectedLocation) {
     }
 }
 
+let _cachedShelves = null;
+
+async function fetchShelvesList() {
+    if (_cachedShelves) return _cachedShelves;
+    try {
+        const res = await fetch('/api/shelves');
+        _cachedShelves = await res.json();
+    } catch (e) {
+        console.error('Failed to fetch shelves:', e);
+        _cachedShelves = [];
+    }
+    return _cachedShelves;
+}
+
+async function loadDrinkShelfOptions(selectedShelfId) {
+    const select = document.getElementById('drink-shelf-id');
+    if (!select) return;
+
+    const shelves = await fetchShelvesList();
+    select.innerHTML = '<option value="">(未設定)</option>';
+    for (const s of shelves) {
+        const opt = document.createElement('option');
+        opt.value = s.id;
+        opt.textContent = `${s.name} (${s.id})`;
+        select.appendChild(opt);
+    }
+
+    if (selectedShelfId) {
+        select.value = selectedShelfId;
+    }
+}
+
 function collectPatrolSettings() {
     const result = {};
 
@@ -883,6 +926,12 @@ function collectPatrolSettings() {
     if (patrolTelegramNotify) result.patrol_telegram_notify = patrolTelegramNotify.checked;
     if (liveAutoInterrupt) result.live_auto_interrupt = liveAutoInterrupt.checked;
 
+    const muteBufferS = document.getElementById('mute-buffer-s');
+    if (muteBufferS) result.mute_buffer_s = parseFloat(muteBufferS.value) || 1.5;
+
+    const showCamera = document.getElementById('show-camera');
+    if (showCamera) result.show_camera = showCamera.checked;
+
     const patrolImagePrompt = document.getElementById('patrol-image-prompt');
     if (patrolImagePrompt) result.patrol_image_prompt = patrolImagePrompt.value;
 
@@ -891,6 +940,10 @@ function collectPatrolSettings() {
 
     const guideDwellTime = document.getElementById('guide-dwell-time');
     if (guideDwellTime) result.guide_dwell_time = parseInt(guideDwellTime.value) || 30;
+
+    // Drink shelf
+    const drinkShelfId = document.getElementById('drink-shelf-id');
+    if (drinkShelfId) result.drink_shelf_id = drinkShelfId.value;
 
     // Patrol points as list of location IDs
     result.patrol_points = collectPatrolPointIds();

@@ -182,6 +182,16 @@
                                 <label for="live-auto-interrupt" style="margin: 0; cursor: pointer;">自動打斷（VAD）— 關閉則使用手動打斷按鈕（適合吵雜環境）</label>
                             </div>
 
+                            <div class="form-group">
+                                <label>Mute Buffer (s) — VAD 關閉時，turn 結束後延遲多久才開啟麥克風</label>
+                                <input type="number" id="mute-buffer-s" min="0" max="10" step="0.1" placeholder="1.5">
+                            </div>
+
+                            <div class="form-group" style="flex-direction: row; align-items: center; gap: 12px;">
+                                <input type="checkbox" id="show-camera" style="width: auto;">
+                                <label for="show-camera" style="margin: 0; cursor: pointer;">顯示機器人相機畫面</label>
+                            </div>
+
                             <h3 class="settings-section-title">Gemini</h3>
 
                             <div class="form-group">
@@ -282,6 +292,14 @@
                                     <input type="file" id="upload-func-decl" accept=".json" hidden>
                                 </label>
                                 <button class="btn-small btn-reset" id="btn-reset-func-decl">Reset to Default</button>
+                            </div>
+
+                            <h3 class="settings-section-title">Drink Delivery</h3>
+                            <div class="form-group">
+                                <label>飲料架 (Shelf)</label>
+                                <select id="drink-shelf-id" class="setting-select">
+                                    <option value="">(未設定)</option>
+                                </select>
                             </div>
 
                             <h3 class="settings-section-title">Patrol Config</h3>
