@@ -50,10 +50,10 @@ async function init() {
         titleEl.textContent = settings.exhibition_title;
     }
 
-    // Toggle camera panel visibility
-    const cameraPanel = document.querySelector('.camera-panel');
-    if (cameraPanel) {
-        cameraPanel.style.display = settings.show_camera === false ? 'none' : '';
+    // Toggle camera feed visibility (keep map visible)
+    const cameraFeed = document.querySelector('.camera-feed');
+    if (cameraFeed) {
+        cameraFeed.style.display = settings.show_camera === false ? 'none' : '';
     }
 
     // Set up mode toggle
