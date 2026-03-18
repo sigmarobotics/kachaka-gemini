@@ -633,9 +633,9 @@ class RobotManager:
         if not self._ctrl:
             return {"ok": False, "error": "Robot not connected"}
         shelf_id = settings_service.get("drink_shelf_id", "S01")
-        destination_id = settings_service.get("drink_destination_id", "")
+        destination_id = settings_service.get("kiosk_location", "")
         if not destination_id:
-            return {"ok": False, "error": "drink_destination_id not configured in settings"}
+            return {"ok": False, "error": "kiosk_location not configured in settings"}
         return self._ctrl.move_shelf(shelf_id, destination_id, timeout=120)
 
     def _fc_return_drink(self, args: dict) -> dict:

@@ -19,6 +19,12 @@ let sessionTokenTotal = 0;
 // Mute starts on first audio/function_call, unmute only at final turn_complete after all work is done.
 let fcExecuting = false;      // true between function_call and function_result
 let muteBufferTimer = null;   // delayed unmute timer (for gap between turn_complete → function_call)
+let exhibitionMuted = false;  // tracks whether mic is currently muted for exhibition mode
+
+function cancelMuteTimer() {
+    clearTimeout(muteBufferTimer);
+    muteBufferTimer = null;
+}
 
 // ─── Tab Switching ───────────────────────────────────
 window.switchTab = function(tabName) {
@@ -174,6 +180,9 @@ function connectWebSocket() {
 }
 
 function disconnectWebSocket() {
+    cancelMuteTimer();
+    fcExecuting = false;
+    exhibitionMuted = false;
     if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ type: 'disconnect' }));
     }
@@ -215,10 +224,12 @@ function handleMessage(msg) {
             updateInterruptBtn(true);
             // Exhibition mode: mute mic during entire AI response cycle
             if (settings.live_auto_interrupt === false) {
-                clearTimeout(muteBufferTimer);
-                muteBufferTimer = null;
-                muteMic();
-                showExhibitionMute(true);
+                if (muteBufferTimer) cancelMuteTimer();
+                if (!exhibitionMuted) {
+                    muteMic();
+                    showExhibitionMute(true);
+                    exhibitionMuted = true;
+                }
             }
             break;
 
@@ -226,12 +237,12 @@ function handleMessage(msg) {
             // User interrupted AI — stop playback, resume listening immediately
             stopPlayback();
             updateInterruptBtn(false);
-            clearTimeout(muteBufferTimer);
-            muteBufferTimer = null;
+            cancelMuteTimer();
             fcExecuting = false;
             if (settings.live_auto_interrupt === false) {
                 unmuteMic();
                 showExhibitionMute(false);
+                exhibitionMuted = false;
             }
             if (currentMode === 'live') showListening();
             break;
@@ -240,8 +251,7 @@ function handleMessage(msg) {
             addSystemMessage(`執行中: ${msg.name || ''}...`);
             fcExecuting = true;
             // Cancel any pending unmute — FC arrived during gap A
-            clearTimeout(muteBufferTimer);
-            muteBufferTimer = null;
+            cancelMuteTimer();
             if (currentMode === 'live' && settings.live_auto_interrupt === false) {
                 muteMic();
                 showExhibitionMute(true);
@@ -278,12 +288,13 @@ function handleMessage(msg) {
                 const muteBufferMs = (settings.mute_buffer_s ?? 1.5) * 1000;
                 const bufferMs = Math.max(remainMs + 200, muteBufferMs);
                 if (settings.live_auto_interrupt === false) {
-                    clearTimeout(muteBufferTimer);
+                    cancelMuteTimer();
                     muteBufferTimer = setTimeout(() => {
                         muteBufferTimer = null;
                         if (fcExecuting) return; // FC arrived late, stay muted
                         unmuteMic();
                         showExhibitionMute(false);
+                        exhibitionMuted = false;
                         showListening();
                     }, bufferMs);
                 } else {
@@ -311,6 +322,9 @@ function handleMessage(msg) {
             isConnected = false;
             updateConnectionUI(false);
             addSystemMessage('Gemini 連線已中斷，正在重新連接...');
+            cancelMuteTimer();
+            fcExecuting = false;
+            exhibitionMuted = false;
             stopPlayback();
             hideWaveform();
             // Auto-reconnect
@@ -440,9 +454,9 @@ async function switchMode(newMode) {
         stopMic();
         stopPlayback();
         hideWaveform();
-        clearTimeout(muteBufferTimer);
-        muteBufferTimer = null;
+        cancelMuteTimer();
         fcExecuting = false;
+        exhibitionMuted = false;
         unmuteMic();
         showExhibitionMute(false);
     }

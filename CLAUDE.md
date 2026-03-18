@@ -54,7 +54,7 @@ Telegram <--polling--> telegram_service.py --> GeminiTextSession (reuses Text AP
 | `main.py` | FastAPI app, REST routes, WebSocket `/ws/chat` handler, MJPEG camera stream |
 | `gemini_live_service.py` | Live API session + `execute_function_call()` dispatcher |
 | `gemini_text_service.py` | Text API session with function calling loop and Google Search workaround |
-| `robot_service.py` | Kachaka gRPC client singleton with background state polling thread (100ms) |
+| `robot_manager.py` | Singleton facade over `kachaka_core` (from `kachaka-sdk-toolkit`) — connection, commands, queries, camera streaming |
 | `telegram_service.py` | Telegram bot manager — per-chat `GeminiTextSession` instances |
 | `settings_service.py` | JSON file-based settings persistence (`data/settings.json`) with migration |
 | `token_service.py` | SQLite token usage tracking (`data/tokens.db`) |
@@ -88,9 +88,9 @@ Gemini function calls are dispatched through `execute_function_call()` in `gemin
 2. Add handler case in `execute_function_call()`
 3. Add interim phrase to `DEFAULT_INTERIM_PHRASES` in `config.py` (for Live API)
 
-### Robot Service Singleton
+### Robot Manager Singleton
 
-`robot_service` is a module-level singleton (`RobotService()`) that auto-connects and polls robot state in a background daemon thread. It uses `kachaka_api.KachakaApiClient` directly (not `kachaka_core`). Thread-safe via `client_lock` and `state_lock`.
+`robot_manager` is a module-level singleton (`RobotManager`) that wraps `kachaka_core` components from `kachaka-sdk-toolkit`. It uses `KachakaConnection` for pooled connections, `RobotController` for command execution, `KachakaQueries` for state queries, and `CameraStreamer` for camera feeds. Thread-safe via internal lock.
 
 ### System Instruction Assembly
 

@@ -343,7 +343,6 @@ DEFAULT_SETTINGS = {
     "guide_dwell_time": 30,           # seconds to wait at guide destination
     # Drink delivery settings
     "drink_shelf_id": "S01",          # shelf ID for drink delivery
-    "drink_destination_id": "",       # destination location ID for drink delivery
     # Exhibition settings
     "exhibition_title": "AI 機器人互動展示",
     "exhibition_quick_actions": [

@@ -275,8 +275,7 @@ async function connectRobot() {
         if (data.ok) {
             if (statusEl) { statusEl.textContent = `Connected (serial: ${data.serial})`; statusEl.style.color = 'var(--mint)'; }
             // Refresh cached data after connecting
-            _cachedLocations = null;
-            _cachedShelves = null;
+            invalidateResource('locations', 'shelves');
             const settings = await (await fetch('/api/settings')).json();
             renderPatrolCheckboxes(settings.patrol_points || []);
             loadDrinkShelfOptions(settings.drink_shelf_id || '');
@@ -819,18 +818,42 @@ async function loadLocationDistances() {
 
 // ─── Patrol Settings (Checkbox-based) ────────────────────────────────────────
 
-let _cachedLocations = null;
+// ─── Generic cached resource fetcher (deduplicates in-flight requests) ───────
+const _resourceCache = {};
 
-async function fetchLocationsList() {
-    if (_cachedLocations) return _cachedLocations;
-    try {
-        const res = await fetch('/api/locations');
-        _cachedLocations = await res.json();
-    } catch (e) {
-        console.error('Failed to fetch locations:', e);
-        _cachedLocations = [];
+function fetchResource(resource) {
+    if (!_resourceCache[resource]) {
+        _resourceCache[resource] = fetch(`/api/${resource}`)
+            .then(r => r.json())
+            .catch(e => {
+                console.error(`Failed to fetch ${resource}:`, e);
+                delete _resourceCache[resource];
+                return [];
+            });
     }
-    return _cachedLocations;
+    return _resourceCache[resource];
+}
+
+function invalidateResource(...resources) {
+    for (const r of resources) delete _resourceCache[r];
+}
+
+async function populateResourceSelect(selectId, resource, selectedValue) {
+    const select = document.getElementById(selectId);
+    if (!select) return;
+    const items = await fetchResource(resource);
+    select.innerHTML = '<option value="">(未設定)</option>';
+    for (const item of items) {
+        const opt = document.createElement('option');
+        opt.value = item.id;
+        opt.textContent = `${item.name} (${item.id})`;
+        select.appendChild(opt);
+    }
+    if (selectedValue) select.value = selectedValue;
+}
+
+function fetchLocationsList() {
+    return fetchResource('locations');
 }
 
 async function renderPatrolCheckboxes(selectedIds) {
@@ -863,54 +886,12 @@ function collectPatrolPointIds() {
     return Array.from(checkboxes).map(cb => cb.value);
 }
 
-async function loadKioskLocationOptions(selectedLocation) {
-    const select = document.getElementById('kiosk-location');
-    if (!select) return;
-
-    const locations = await fetchLocationsList();
-    select.innerHTML = '<option value="">(未設定)</option>';
-    for (const loc of locations) {
-        const opt = document.createElement('option');
-        opt.value = loc.id;
-        opt.textContent = `${loc.name} (${loc.id})`;
-        select.appendChild(opt);
-    }
-
-    if (selectedLocation) {
-        select.value = selectedLocation;
-    }
+function loadKioskLocationOptions(selectedLocation) {
+    return populateResourceSelect('kiosk-location', 'locations', selectedLocation);
 }
 
-let _cachedShelves = null;
-
-async function fetchShelvesList() {
-    if (_cachedShelves) return _cachedShelves;
-    try {
-        const res = await fetch('/api/shelves');
-        _cachedShelves = await res.json();
-    } catch (e) {
-        console.error('Failed to fetch shelves:', e);
-        _cachedShelves = [];
-    }
-    return _cachedShelves;
-}
-
-async function loadDrinkShelfOptions(selectedShelfId) {
-    const select = document.getElementById('drink-shelf-id');
-    if (!select) return;
-
-    const shelves = await fetchShelvesList();
-    select.innerHTML = '<option value="">(未設定)</option>';
-    for (const s of shelves) {
-        const opt = document.createElement('option');
-        opt.value = s.id;
-        opt.textContent = `${s.name} (${s.id})`;
-        select.appendChild(opt);
-    }
-
-    if (selectedShelfId) {
-        select.value = selectedShelfId;
-    }
+function loadDrinkShelfOptions(selectedShelfId) {
+    return populateResourceSelect('drink-shelf-id', 'shelves', selectedShelfId);
 }
 
 function collectPatrolSettings() {
