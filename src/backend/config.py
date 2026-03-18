@@ -1,7 +1,7 @@
 import os
 
 # Fallback robot IP from env var. Primary source is settings.json "robot_ip" field.
-ROBOT_IP = os.environ.get("ROBOT_IP", "192.168.50.133:26400")
+ROBOT_IP = os.environ.get("ROBOT_IP", "")
 
 
 def _clamp(value, lo, hi, default, cast=float):
@@ -235,17 +235,11 @@ DEFAULT_FUNCTION_DECLARATIONS = [
 
 DEFAULT_PERSONA = (
     "## Role\n"
-    "你是由 Sigma Robotics 開發的「物理 AI (Physical AI) 導覽大使」。"
-    "你目前在 2026 智慧城市展現場，代表「台南市政府經發局」與「SIG 聯盟」"
-    "展示一套已在沙崙綠能科技示範場域成功落地的「物理AI方案」。\n\n"
+    "你是一台搭載 AI 的自主導覽機器人。\n\n"
     "## Persona\n"
-    "* **專業背景**：你不是單一廠商的封閉系統，而是代表一個「通用平台」，"
-    "強調透過 MCP (Model Context Protocol) 整合多家專精廠商"
-    "（如：Preferred Robotics 的底盤、CUPOLA 的 360 相機、Google 的雲端大模型 Gemini 3）。\n"
-    "* **說話風格**：科技感十足且專業。由於展場吵雜，每段回覆請控制在 50 字內。"
-    "另外，你可以執行多語系的對話，包含中文，英文，日文。用使用者提問的語言回覆他。\n"
-    "* **核心使命**：向訪客證明透過「水平分工」與「雲端 VLM 判讀」，"
-    "能以極低成本達成不間斷的精準導覽與巡檢。"
+    "* **說話風格**：友善、簡潔、專業。每段回覆控制在 50 字內。\n"
+    "* **多語系**：用使用者提問的語言回覆（中文、英文、日文等）。\n"
+    "* **核心使命**：提供導覽、巡檢、搬運等服務。"
 )
 
 DEFAULT_STATIC_KNOWLEDGE = (
@@ -291,16 +285,8 @@ DEFAULT_ROBOT_BACKGROUND_INFO = (
 
 
 DEFAULT_KNOWLEDGE_BASE = (
-    "## 沙崙綠能科技示範場域 (SGETDS)\n"
-    "- **身分**：國內首座完整綠能驗證場域，工研院營運。"
-    "獲得 2022 全球卓越建設獎金獎、鑽石級綠建築認證。\n"
-    "- **亮點**：20米高太陽能樹、風之使者 (梅花鹿發電裝置)、SPINLab 節能測試。\n\n"
-    "## 交通指南\n"
-    "- **高鐵轉乘**：台南高鐵站 2 樓通廊直通台鐵沙崙站。步行至 SGETDS 約 10-15 分鐘。\n"
-    "- **智慧接駁**：高鐵 4 號出口可搭乘「電動接駁小巴」前往園區各點。\n\n"
-    "## 周邊美食\n"
-    "- **三井 Outlet**：高鐵站對面，推薦合點壽司、NARA Thai。\n"
-    "- **在地必吃**：長榮大學蒜頭飯、阿裕牛肉涮涮鍋 (車程10分)、卜卜角餃子店。"
+    "## 場域資訊\n"
+    "（請在 Settings UI 中填入您的場域資訊，例如：樓層介紹、設施位置、交通方式等。）"
 )
 
 DEFAULT_SETTINGS = {

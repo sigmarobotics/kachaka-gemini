@@ -1,5 +1,5 @@
 // demo-patrol-page.js — Standalone patrol dashboard (History, Reports, Tokens)
-// Matches visual-patrol UI: amber/cream theme, grid cards, modal detail, Chart.js
+// Patrol dashboard: amber/cream theme, grid cards, modal detail, Chart.js
 
 // ═══════════════════════════════════════════════════════════════════════════
 // GLOBALS

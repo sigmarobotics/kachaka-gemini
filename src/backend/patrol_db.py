@@ -1,8 +1,7 @@
 """Patrol DB — SQLite database for patrol runs and inspection results.
 
 Stores patrol run metadata, per-point inspection results, and token usage
-breakdown.  The schema is compatible with visual-patrol v1's patrol.db
-(simplified: no robot_id, robot_serial, sync_status, robot_moving_status).
+breakdown.  Uses SQLite with WAL mode for concurrent access.
 """
 
 import os

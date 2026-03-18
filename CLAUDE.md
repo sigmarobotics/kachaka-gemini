@@ -12,7 +12,7 @@ Kachaka + Gemini: A web interface connecting a [Kachaka](https://kachaka.life/) 
 
 ```bash
 # Development (hot-reload via volume mount + --reload)
-export ROBOT_IP=192.168.50.133:26400
+export ROBOT_IP=<YOUR_ROBOT_IP>:26400
 docker compose up -d
 
 # Rebuild after requirements.txt or Dockerfile changes
@@ -108,7 +108,7 @@ Models like `gemini-3-flash-preview` return 400 when both Google Search and func
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `ROBOT_IP` | `192.168.50.133:26400` | Kachaka robot gRPC address |
+| `ROBOT_IP` | `<YOUR_ROBOT_IP>:26400` | Kachaka robot gRPC address |
 
 ## Docker Layout
 

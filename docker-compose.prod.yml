@@ -5,7 +5,7 @@ services:
     ports:
       - "9000:9000"
     environment:
-      - ROBOT_IP=${ROBOT_IP:-192.168.125.103:26400}
+      - ROBOT_IP=${ROBOT_IP:-}
     volumes:
       - ./data:/app/data
     restart: unless-stopped

@@ -1,6 +1,6 @@
 """Report Service — PDF report generation and video analysis.
 
-PDF generation ported from visual-patrol v1 (ReportLab + CJK fonts).
+PDF report generation using ReportLab with CJK font support.
 Video analysis uses Gemini Files API.
 """
 
@@ -127,7 +127,7 @@ class ReportService:
                                    textColor=colors.HexColor("#dc3545"))
 
         # Title
-        story.append(Paragraph("VISUAL PATROL — Inspection Report", title_style))
+        story.append(Paragraph("Patrol Inspection Report", title_style))
         story.append(Spacer(1, 10*mm))
 
         # Patrol info table

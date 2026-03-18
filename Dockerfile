@@ -30,7 +30,7 @@ RUN mkdir -p /app/data /app/data/report/images /app/data/report/video
 EXPOSE 9000
 
 # Environment variables
-ENV ROBOT_IP=192.168.50.133:26400
+ENV ROBOT_IP=""
 ENV PYTHONUNBUFFERED=1
 
 # Health check

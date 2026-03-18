@@ -814,7 +814,7 @@ command: uvicorn main:app --host 0.0.0.0 --port 9000 --reload
 ```bash
 docker build -t kachaka-gemini-live .
 docker run -d -p 9000:9000 \
-  -e ROBOT_IP=192.168.50.133:26400 \
+  -e ROBOT_IP=<YOUR_ROBOT_IP>:26400 \
   -v $(pwd)/data:/app/data \
   kachaka-gemini-live
 ```

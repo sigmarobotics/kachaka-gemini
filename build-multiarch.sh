@@ -36,7 +36,7 @@ docker buildx build --platform linux/amd64,linux/arm64 -t ${IMAGE_NAME}:${TAG} -
 
 echo ""
 echo "Done! Run with:"
-echo "  docker run -p 9000:9000 -e ROBOT_IP=192.168.50.133:26400 ${IMAGE_NAME}:${TAG}"
+echo "  docker run -p 9000:9000 -e ROBOT_IP=<YOUR_ROBOT_IP>:26400 ${IMAGE_NAME}:${TAG}"
 echo ""
 echo "Or use docker-compose:"
 echo "  docker-compose up -d"

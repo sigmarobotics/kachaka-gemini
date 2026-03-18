@@ -1,5 +1,7 @@
 # Kachaka + Gemini
 
+[繁體中文版 README](README.zh-TW.md) | [中文架構文件](docs/architecture-zh.md)
+
 A web interface connecting a [Kachaka](https://kachaka.life/) mobile robot to Google's Gemini API for voice and text conversations with real-time function-calling robot control. Includes a Telegram bot bridge and an autonomous patrol inspection system with AI-powered visual analysis.
 
 ## Features
@@ -99,8 +101,8 @@ graph TB
 ### Run
 
 ```bash
-# Set your robot's IP (default: 192.168.50.133:26400)
-export ROBOT_IP=192.168.50.133:26400
+# Set your robot's IP (default: <YOUR_ROBOT_IP>:26400)
+export ROBOT_IP=<YOUR_ROBOT_IP>:26400
 
 docker compose up -d
 ```
@@ -317,7 +319,7 @@ All settings are persisted to `data/settings.json` and editable through the web 
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `ROBOT_IP` | `192.168.50.133:26400` | Kachaka robot gRPC address |
+| `ROBOT_IP` | `<YOUR_ROBOT_IP>:26400` | Kachaka robot gRPC address |
 
 ### Key Settings
 
@@ -343,13 +345,13 @@ Generation parameters (`temperature`, `max_output_tokens`, `top_p`, `top_k`) and
 
 ```bash
 # Development with hot-reload
-export ROBOT_IP=192.168.50.133:26400
+export ROBOT_IP=<YOUR_ROBOT_IP>:26400
 docker compose up -d
 
 # Production (no volume mount, no --reload)
 docker build -t kachaka-gemini-live .
 docker run -d -p 9000:9000 \
-  -e ROBOT_IP=192.168.50.133:26400 \
+  -e ROBOT_IP=<YOUR_ROBOT_IP>:26400 \
   -v $(pwd)/data:/app/data \
   kachaka-gemini-live
 ```
@@ -361,6 +363,29 @@ The Docker image includes a health check (`/api/state`), runs on Python 3.12-sli
 ```bash
 ./build-multiarch.sh    # Builds for linux/amd64 and linux/arm64
 ```
+
+## Modularizing VLM Analysis with vlm-service
+
+The current codebase contains three separate locations that call the Gemini API directly for image/video analysis:
+
+- `robot_manager._fc_capture_camera()` -- camera capture + free-text analysis
+- `robot_manager._fc_inspect_location()` -- move to location + capture + free-text analysis
+- `patrol_service._inspect_with_gemini()` -- structured OK/NG inspection (the only one using `response_schema`)
+
+For production deployments, consider consolidating these into a shared AI service layer using [`vlm-service`](https://github.com/Sigma-Snaken/vlm-service):
+
+1. **Install**: Add `vlm-service` to `requirements.txt`
+2. **Create `ai_service.py`**: A thin facade wrapping `vlm-service`'s `GeminiProvider`
+3. **Migrate callers**: Replace direct `genai.Client()` calls with `ai_service.inspect()` / `ai_service.analyze_video()`
+
+Benefits:
+
+- **Structured output** -- All VLM calls return schema-constrained JSON (via `response_mime_type` + `response_json_schema`), enabling programmatic downstream processing
+- **Token tracking** -- Every call returns usage metadata automatically
+- **Lazy client** -- Single `GeminiProvider` instance, recreated only when API key changes
+- **Dynamic schemas** -- Build venue-specific inspection schemas at runtime (e.g., custom NG criteria per checkpoint)
+
+See [kachaka-gemini-v2](https://github.com/Sigma-Snaken/kachaka-gemini-v2) for a working implementation with `ai_service.py`.
 
 ## Known Limitations
 
