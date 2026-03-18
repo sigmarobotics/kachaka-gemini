@@ -18,8 +18,8 @@ docker compose up -d
 # Rebuild after requirements.txt or Dockerfile changes
 docker compose up -d --build
 
-# Multi-arch build (amd64 + arm64)
-./build-multiarch.sh
+# Multi-arch build via CI (push a version tag)
+git tag v1.0.0 && git push --tags
 ```
 
 The app runs at **http://localhost:9000**. Source in `src/` is volume-mounted so edits are picked up automatically.

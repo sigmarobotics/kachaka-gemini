@@ -120,10 +120,7 @@ docker compose up -d --build
 
 ### Multi-arch Build
 
-```bash
-./build-multiarch.sh                # builds for amd64 + arm64
-./build-multiarch.sh myimage v2     # custom image name and tag
-```
+Multi-arch images (amd64 + arm64) are built automatically via [GitHub Actions](.github/workflows/deploy.yml) on tagged releases (`v*`).
 
 ## Tech Stack
 
@@ -145,7 +142,6 @@ docker compose up -d --build
 kachaka-gemini/
 |-- Dockerfile
 |-- docker-compose.yml
-|-- build-multiarch.sh
 |-- CLAUDE.md                         # Project conventions for Claude Code
 |-- data/                             # Runtime data (gitignored)
 |   |-- settings.json                 # Persisted settings
@@ -360,8 +356,10 @@ The Docker image includes a health check (`/api/state`), runs on Python 3.12-sli
 
 ### Multi-arch
 
+Multi-arch images are built via GitHub Actions CI. Push a version tag to trigger:
+
 ```bash
-./build-multiarch.sh    # Builds for linux/amd64 and linux/arm64
+git tag v1.0.0 && git push --tags
 ```
 
 ## Modularizing VLM Analysis with vlm-service

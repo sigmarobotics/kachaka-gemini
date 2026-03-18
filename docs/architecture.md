@@ -826,4 +826,4 @@ docker run -d -p 9000:9000 \
 
 ### Multi-arch
 
-`build-multiarch.sh` uses `docker buildx` to build for `linux/amd64` and `linux/arm64`, supporting deployment on both standard servers and ARM devices (e.g. Jetson, Raspberry Pi).
+Multi-arch images (`linux/amd64` + `linux/arm64`) are built via GitHub Actions CI on tagged releases. See `.github/workflows/deploy.yml`.
