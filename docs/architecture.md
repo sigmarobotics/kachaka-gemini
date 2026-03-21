@@ -1039,7 +1039,7 @@ services:
 # docker-compose.prod.yml
 services:
   kachaka-gemini:
-    image: ghcr.io/sigma-snaken/kachaka-gemini:latest
+    image: ghcr.io/sigmarobotics/kachaka-gemini:latest
     ports: ["9000:9000"]
     environment:
       - ROBOT_IP=${ROBOT_IP:-}

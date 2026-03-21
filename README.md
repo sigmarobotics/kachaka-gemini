@@ -176,7 +176,7 @@ Multi-arch images (linux/amd64 + linux/arm64) are built automatically via [GitHu
 git tag v1.0.0 && git push --tags
 ```
 
-Images are published to `ghcr.io/sigma-snaken/kachaka-gemini` with semver tags and `latest`.
+Images are published to `ghcr.io/sigmarobotics/kachaka-gemini` with semver tags and `latest`.
 
 ## Tech Stack
 
@@ -185,7 +185,7 @@ Images are published to `ghcr.io/sigma-snaken/kachaka-gemini` with semver tags a
 | Backend | Python 3.12, FastAPI, Uvicorn |
 | Frontend | Vanilla JavaScript (ES modules), Jinja2 templates, CSS |
 | AI | Google Gemini API (`google-genai` SDK), Live API (raw WebSocket via `websockets`) |
-| Robot | [`kachaka-sdk-toolkit`](https://github.com/Sigma-Snaken/kachaka-sdk-toolkit) (`kachaka_core`), `kachaka-api` >= 3.14 (gRPC) |
+| Robot | [`kachaka-sdk-toolkit`](https://github.com/sigmarobotics/kachaka-sdk-toolkit) (`kachaka_core`), `kachaka-api` >= 3.14 (gRPC) |
 | Pathfinding | A* on occupancy grid (NumPy + Pillow), obstacle inflation |
 | Database | SQLite WAL mode (`tokens.db` for usage, `patrol.db` for runs/inspections) |
 | Messaging | `python-telegram-bot` >= 21.0 for Telegram bridge |
@@ -439,7 +439,7 @@ Push a version tag to trigger [GitHub Actions](.github/workflows/deploy.yml):
 git tag v1.0.0 && git push --tags
 ```
 
-This builds `linux/amd64` + `linux/arm64` images and pushes to `ghcr.io/sigma-snaken/kachaka-gemini` with semver and `latest` tags.
+This builds `linux/amd64` + `linux/arm64` images and pushes to `ghcr.io/sigmarobotics/kachaka-gemini` with semver and `latest` tags.
 
 ## Modularizing VLM Analysis with vlm-service
 
@@ -449,7 +449,7 @@ The current codebase contains three separate locations that call the Gemini API 
 - `robot_manager._fc_inspect_location()` -- move to location + capture + free-text analysis
 - `patrol_service._inspect_with_gemini()` -- structured OK/NG inspection (the only one using `response_schema`)
 
-For production deployments, consider consolidating these into a shared AI service layer using [`vlm-service`](https://github.com/Sigma-Snaken/vlm-service):
+For production deployments, consider consolidating these into a shared AI service layer using [`vlm-service`](https://github.com/sigmarobotics/vlm-service):
 
 1. **Install**: Add `vlm-service` to `requirements.txt`
 2. **Create `ai_service.py`**: A thin facade wrapping `vlm-service`'s `GeminiProvider`

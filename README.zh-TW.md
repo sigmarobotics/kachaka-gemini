@@ -176,7 +176,7 @@ docker compose -f docker-compose.prod.yml up -d
 git tag v1.0.0 && git push --tags
 ```
 
-映像檔發布至 `ghcr.io/sigma-snaken/kachaka-gemini`，具有 semver 標籤與 `latest` 標籤。
+映像檔發布至 `ghcr.io/sigmarobotics/kachaka-gemini`，具有 semver 標籤與 `latest` 標籤。
 
 ## 技術棧
 
@@ -185,7 +185,7 @@ git tag v1.0.0 && git push --tags
 | 後端 | Python 3.12, FastAPI, Uvicorn |
 | 前端 | Vanilla JavaScript (ES modules), Jinja2 templates, CSS |
 | AI | Google Gemini API (`google-genai` SDK), Live API (透過 `websockets` 的原生 WebSocket) |
-| 機器人 | [`kachaka-sdk-toolkit`](https://github.com/Sigma-Snaken/kachaka-sdk-toolkit) (`kachaka_core`), `kachaka-api` >= 3.14 (gRPC) |
+| 機器人 | [`kachaka-sdk-toolkit`](https://github.com/sigmarobotics/kachaka-sdk-toolkit) (`kachaka_core`), `kachaka-api` >= 3.14 (gRPC) |
 | 路徑搜尋 | A* 佔據柵格演算法 (NumPy + Pillow)，障礙物膨脹 |
 | 資料庫 | SQLite WAL 模式 (`tokens.db` 用於使用量、`patrol.db` 用於巡邏執行/檢查) |
 | 通訊 | `python-telegram-bot` >= 21.0 用於 Telegram 橋接 |
@@ -439,7 +439,7 @@ Docker 映像檔包含：
 git tag v1.0.0 && git push --tags
 ```
 
-此流程建置 `linux/amd64` + `linux/arm64` 映像檔並推送至 `ghcr.io/sigma-snaken/kachaka-gemini`，具有 semver 與 `latest` 標籤。
+此流程建置 `linux/amd64` + `linux/arm64` 映像檔並推送至 `ghcr.io/sigmarobotics/kachaka-gemini`，具有 semver 與 `latest` 標籤。
 
 ## 透過 vlm-service 模組化 VLM 分析
 
@@ -449,7 +449,7 @@ git tag v1.0.0 && git push --tags
 - `robot_manager._fc_inspect_location()` -- 移動至地點 + 拍攝 + 自由文字分析
 - `patrol_service._inspect_with_gemini()` -- 結構化 OK/NG 檢查（唯一使用 `response_schema` 的位置）
 
-對於正式環境部署，建議使用 [`vlm-service`](https://github.com/Sigma-Snaken/vlm-service) 將這些整合至共享的 AI 服務層：
+對於正式環境部署，建議使用 [`vlm-service`](https://github.com/sigmarobotics/vlm-service) 將這些整合至共享的 AI 服務層：
 
 1. **安裝**：將 `vlm-service` 加入 `requirements.txt`
 2. **建立 `ai_service.py`**：封裝 `vlm-service` 的 `GeminiProvider` 的薄外觀層
