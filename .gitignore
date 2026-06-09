@@ -11,3 +11,5 @@ data/uploads/
 .DS_Store
 .claude/
 板榮介紹.json
+docs/plans/
+.playwright-mcp/
