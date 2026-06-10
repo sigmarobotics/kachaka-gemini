@@ -26,13 +26,16 @@ class FrameHub:
             return frame["image_base64"]
         return None
 
-    def wait_for_fresh_frame(self, timeout: float = 10.0) -> bytes | None:
+    def wait_for_fresh_frame(self, timeout: float = 10.0,
+                             max_age_s: float = 2.0) -> bytes | None:
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
-            jpeg = self.get_latest_frame_bytes()
-            if jpeg:
-                self._last_fetch_time = time.monotonic()
-                return jpeg
+            age = robot_manager.get_camera_frame_age_s()
+            if age is not None and age < max_age_s:
+                jpeg = self.get_latest_frame_bytes()
+                if jpeg:
+                    self._last_fetch_time = time.monotonic()
+                    return jpeg
             time.sleep(0.2)
         return None
 

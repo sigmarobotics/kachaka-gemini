@@ -186,11 +186,24 @@ class RobotManager:
         return self.connect(new_ip)  # connect() already handles disconnect
 
     def get_connection_status(self) -> dict:
-        """Return current connection status."""
+        """Return current connection status (health-aware via connection_info)."""
+        if self._conn is None:
+            return {
+                "connected": False,
+                "ip": self._ip,
+                "serial": self._serial,
+                "state": "disconnected",
+                "state_changed_ago_s": None,
+                "last_ok_ping_ago_s": None,
+            }
+        info = self._conn.connection_info()
         return {
-            "connected": self.connected,
+            "connected": info["state"] == "connected",
             "ip": self._ip,
             "serial": self._serial,
+            "state": info["state"],
+            "state_changed_ago_s": info["state_changed_ago_s"],
+            "last_ok_ping_ago_s": info["last_ok_ping_ago_s"],
         }
 
     def _shutdown_components(self):
@@ -318,6 +331,12 @@ class RobotManager:
             return None
         return self._camera.latest_frame
 
+    def get_camera_frame_age_s(self) -> float | None:
+        """Seconds since the latest camera frame, or None if no frame."""
+        if not self._camera:
+            return None
+        return self._camera.latest_frame_age_s
+
     def get_camera_jpeg_bytes(self) -> bytes | None:
         """Return raw JPEG bytes for MJPEG streaming."""
         frame = self.get_camera_frame()
@@ -359,7 +378,8 @@ class RobotManager:
         if not self._conn:
             return
         try:
-            self._conn.client.move_forward(distance_meter=distance, speed=speed)
+            self._conn.client.move_forward(
+                distance_meter=distance, speed=speed, wait_for_completion=False)
         except Exception as e:
             logger.error("move_forward error: %s", e)
 
@@ -368,7 +388,8 @@ class RobotManager:
         if not self._conn:
             return
         try:
-            self._conn.client.rotate_in_place(angle_radian=angle)
+            self._conn.client.rotate_in_place(
+                angle_radian=angle, wait_for_completion=False)
         except Exception as e:
             logger.error("rotate error: %s", e)
 
@@ -588,7 +609,7 @@ class RobotManager:
             angle_deg = 15.0
         angle_rad = math.radians(angle_deg)
         self.rotate(angle_rad)
-        return {"ok": True, "message": f"Rotated {angle_deg}°"}
+        return {"ok": True, "message": f"Rotate {angle_deg}° command issued"}
 
     def _fc_guide_to_booth(self, args: dict) -> dict:
         """Guide a visitor to a named location, wait, then return home."""
