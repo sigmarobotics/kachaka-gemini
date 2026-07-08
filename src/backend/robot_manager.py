@@ -105,6 +105,15 @@ class RobotManager:
         self._serial: str = ""
         self._map_cache: dict | None = None
         self._lock = threading.Lock()
+        # JPEG stashed by _fc_capture_camera at capture time — consumers that
+        # run after the Gemini turn (e.g. Telegram photo send) must use this
+        # instead of re-fetching the live buffer, which may already show a
+        # different location.
+        self._last_capture_jpeg: bytes | None = None
+
+    def get_last_capture_jpeg(self) -> bytes | None:
+        """JPEG stashed by the most recent capture_camera function call."""
+        return self._last_capture_jpeg
 
     # ── Properties ────────────────────────────────────────────────
 
@@ -478,6 +487,8 @@ class RobotManager:
         jpeg = frame_hub.wait_for_fresh_frame(timeout=10)
         if not jpeg:
             return {"ok": False, "error": "Camera not available"}
+        # Stash the verified-fresh frame for post-turn consumers (Telegram).
+        self._last_capture_jpeg = jpeg
 
         prompt = args.get("prompt", "") or args.get("query", "")
 

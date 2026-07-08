@@ -184,12 +184,12 @@ class TelegramBotManager:
                 fn_name = msg.get("name", "")
                 text_parts.append(f"[Executing: {fn_name}]")
 
-                # If capture_camera, send the photo
+                # If capture_camera, send the photo. Use the JPEG stashed at
+                # capture time — this runs AFTER the whole Gemini turn, so the
+                # live buffer may show wherever the robot moved afterwards.
                 if fn_name == "capture_camera":
-                    frame = robot_manager.get_camera_frame()
-                    if frame and frame.get("ok") and frame.get("image_base64"):
-                        import base64
-                        jpeg_bytes = base64.b64decode(frame["image_base64"])
+                    jpeg_bytes = robot_manager.get_last_capture_jpeg()
+                    if jpeg_bytes:
                         if text_parts:
                             await update.message.reply_text("\n".join(text_parts))
                             text_parts.clear()
