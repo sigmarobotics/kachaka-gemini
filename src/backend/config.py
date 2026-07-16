@@ -293,8 +293,8 @@ DEFAULT_SETTINGS = {
     "gemini_api_key": "",
     "telegram_bot_token": "",
     "api_mode": "text",
-    "text_model": "gemini-3-flash-preview",
-    "live_model": "gemini-2.5-flash-native-audio-preview-12-2025",
+    "text_model": "gemini-3.5-flash",
+    "live_model": "gemini-3.1-flash-live-preview",
     "text_enable_google_search": True,
     "live_enable_google_search": False,
     # Generation parameters (per-mode)

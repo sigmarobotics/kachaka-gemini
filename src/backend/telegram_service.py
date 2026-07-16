@@ -145,13 +145,10 @@ class TelegramBotManager:
             session = await self._get_session(chat_id)
 
             # Build multimodal content: image + text
-            from google.genai import types
-            session._history.append(
-                types.Content(role="user", parts=[
-                    types.Part.from_bytes(data=bytes(photo_bytes), mime_type="image/jpeg"),
-                    types.Part.from_text(text=caption),
-                ])
-            )
+            input_items = [
+                {"type": "image", "mime_type": "image/jpeg", "data": base64.b64encode(bytes(photo_bytes)).decode("utf-8")},
+                {"type": "text", "text": caption},
+            ]
 
             # Collect responses
             collected = []
@@ -160,7 +157,7 @@ class TelegramBotManager:
             original_cb = session.send_callback
             session.send_callback = collector
             try:
-                await session._generate()
+                await session._generate(input_items)
             finally:
                 session.send_callback = original_cb
 

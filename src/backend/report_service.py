@@ -216,7 +216,7 @@ class ReportService:
         """
         settings = settings_service.get_all()
         api_key = settings.get("gemini_api_key", "")
-        model_id = settings.get("patrol_model", settings.get("text_model", "gemini-2.0-flash"))
+        model_id = settings.get("patrol_model", settings.get("text_model", "gemini-3.5-flash"))
 
         if not api_key:
             return {"text": "Error: API key not configured", "input_tokens": 0,
@@ -245,17 +245,20 @@ class ReportService:
                         "input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
 
             # Generate analysis
-            response = client.models.generate_content(
+            interaction = client.interactions.create(
                 model=model_id,
-                contents=[video_file, prompt],
+                input=[
+                    {"type": "video", "uri": video_file.uri, "mime_type": video_file.mime_type},
+                    {"type": "text", "text": prompt},
+                ],
             )
 
-            usage = response.usage_metadata
+            usage = interaction.usage
             return {
-                "text": response.text or "",
-                "input_tokens": getattr(usage, "prompt_token_count", 0) or 0,
-                "output_tokens": getattr(usage, "candidates_token_count", 0) or 0,
-                "total_tokens": getattr(usage, "total_token_count", 0) or 0,
+                "text": interaction.output_text or "",
+                "input_tokens": getattr(usage, "total_input_tokens", 0) or 0,
+                "output_tokens": getattr(usage, "total_output_tokens", 0) or 0,
+                "total_tokens": getattr(usage, "total_tokens", 0) or 0,
             }
         except Exception as e:
             logger.error("Video analysis error: %s", e, exc_info=True)
@@ -290,7 +293,7 @@ class ReportService:
 
         settings = settings_service.get_all()
         api_key = settings.get("gemini_api_key", "")
-        model_id = settings.get("patrol_model", settings.get("text_model", "gemini-2.0-flash"))
+        model_id = settings.get("patrol_model", settings.get("text_model", "gemini-3.5-flash"))
 
         if not api_key:
             return {"text": "Error: API key not configured",
@@ -298,13 +301,13 @@ class ReportService:
 
         try:
             client = genai.Client(api_key=api_key)
-            response = client.models.generate_content(model=model_id, contents=full_prompt)
-            usage = response.usage_metadata
+            interaction = client.interactions.create(model=model_id, input=full_prompt)
+            usage = interaction.usage
             return {
-                "text": response.text or "",
-                "input_tokens": getattr(usage, "prompt_token_count", 0) or 0,
-                "output_tokens": getattr(usage, "candidates_token_count", 0) or 0,
-                "total_tokens": getattr(usage, "total_token_count", 0) or 0,
+                "text": interaction.output_text or "",
+                "input_tokens": getattr(usage, "total_input_tokens", 0) or 0,
+                "output_tokens": getattr(usage, "total_output_tokens", 0) or 0,
+                "total_tokens": getattr(usage, "total_tokens", 0) or 0,
             }
         except Exception as e:
             return {"text": f"Report generation failed: {e}",

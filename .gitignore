@@ -13,3 +13,4 @@ data/uploads/
 板榮介紹.json
 docs/plans/
 .playwright-mcp/
+src/backend/data/

@@ -7,6 +7,7 @@ Flow: move to each patrol point -> capture frame -> VLM analysis -> save to DB
 After all points: generate AI summary -> update DB -> Telegram notification
 """
 
+import base64
 import json
 import logging
 import os
@@ -17,7 +18,6 @@ from datetime import datetime, timezone, timedelta
 from enum import Enum
 
 from google import genai
-from google.genai import types
 from pydantic import BaseModel, Field
 
 import patrol_db
@@ -155,7 +155,7 @@ class PatrolService:
             # Initialise DB
             patrol_db.init_db()
 
-            model_id = settings.get("text_model", "gemini-3-flash-preview")
+            model_id = settings.get("text_model", "gemini-3.5-flash")
 
             # Create DB run
             start_time = datetime.now(UTC8).isoformat()
@@ -483,27 +483,26 @@ class PatrolService:
                              point_name, prompt, jpeg_bytes) -> dict:
         try:
             user_prompt = f"巡檢點：{point_name}\n巡檢指示：{prompt}"
-            config = types.GenerateContentConfig(
-                system_instruction=system_prompt,
-                response_mime_type="application/json",
-                response_schema=InspectionResult,
-            )
-            response = client.models.generate_content(
+            response_format = {
+                "type": "text",
+                "mime_type": "application/json",
+                "schema": InspectionResult.model_json_schema(),
+            }
+            interaction = client.interactions.create(
                 model=model_id,
-                contents=[
-                    types.Content(role="user", parts=[
-                        types.Part.from_text(text=user_prompt),
-                        types.Part.from_bytes(data=jpeg_bytes, mime_type="image/jpeg"),
-                    ])
+                system_instruction=system_prompt,
+                input=[
+                    {"type": "text", "text": user_prompt},
+                    {"type": "image", "mime_type": "image/jpeg", "data": base64.b64encode(jpeg_bytes).decode("utf-8")},
                 ],
-                config=config,
+                response_format=response_format,
             )
-            usage = response.usage_metadata
-            input_tokens = (usage.prompt_token_count or 0) if usage else 0
-            output_tokens = (usage.candidates_token_count or 0) if usage else 0
-            total_tokens = (usage.total_token_count or 0) if usage else 0
+            usage = interaction.usage
+            input_tokens = (getattr(usage, "total_input_tokens", 0) or 0) if usage else 0
+            output_tokens = (getattr(usage, "total_output_tokens", 0) or 0) if usage else 0
+            total_tokens = (getattr(usage, "total_tokens", 0) or 0) if usage else 0
 
-            raw_text = response.text or "{}"
+            raw_text = interaction.output_text or "{}"
             try:
                 parsed = json.loads(raw_text)
                 is_ng = parsed.get("is_NG", False)
@@ -555,13 +554,13 @@ class PatrolService:
                 f"請用繁體中文撰寫一份簡潔的巡檢總結報告。"
             )
 
-            response = client.models.generate_content(model=model_id, contents=prompt)
-            usage = response.usage_metadata
+            interaction = client.interactions.create(model=model_id, input=prompt)
+            usage = interaction.usage
             return {
-                "text": response.text or "",
-                "input_tokens": (usage.prompt_token_count or 0) if usage else 0,
-                "output_tokens": (usage.candidates_token_count or 0) if usage else 0,
-                "total_tokens": (usage.total_token_count or 0) if usage else 0,
+                "text": interaction.output_text or "",
+                "input_tokens": (getattr(usage, "total_input_tokens", 0) or 0) if usage else 0,
+                "output_tokens": (getattr(usage, "total_output_tokens", 0) or 0) if usage else 0,
+                "total_tokens": (getattr(usage, "total_tokens", 0) or 0) if usage else 0,
             }
         except Exception as e:
             logger.error("Summary generation error: %s", e)

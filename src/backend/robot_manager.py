@@ -494,9 +494,9 @@ class RobotManager:
 
         # Analyze with Gemini
         from google import genai
-        from google.genai import types
+        import base64
         api_key = settings_service.get("gemini_api_key", "")
-        model = settings_service.get("text_model", "gemini-3-flash-preview")
+        model = settings_service.get("text_model", "gemini-3.5-flash")
 
         user_prompt = prompt.strip() if prompt else "請詳細描述這張照片中你看到的所有內容。"
 
@@ -508,19 +508,15 @@ class RobotManager:
 
         try:
             client = genai.Client(api_key=api_key)
-            response = client.models.generate_content(
+            interaction = client.interactions.create(
                 model=model,
-                contents=[
-                    types.Content(role="user", parts=[
-                        types.Part.from_bytes(data=jpeg, mime_type="image/jpeg"),
-                        types.Part.from_text(text=user_prompt),
-                    ])
+                system_instruction=sys_instruction,
+                input=[
+                    {"type": "image", "mime_type": "image/jpeg", "data": base64.b64encode(jpeg).decode("utf-8")},
+                    {"type": "text", "text": user_prompt},
                 ],
-                config=types.GenerateContentConfig(
-                    system_instruction=sys_instruction,
-                ),
             )
-            analysis = response.text or "No analysis available"
+            analysis = interaction.output_text or "No analysis available"
         except Exception as e:
             logger.error("Camera analysis error: %s", e)
             analysis = f"Image analysis failed: {e}"
@@ -573,22 +569,20 @@ class RobotManager:
         # Analyze with Gemini
         prompt = args.get("prompt", "") or "請分析這張照片中的環境狀況。繁體中文。"
         from google import genai
-        from google.genai import types
+        import base64
         api_key = settings_service.get("gemini_api_key", "")
-        model = settings_service.get("text_model", "gemini-3-flash-preview")
+        model = settings_service.get("text_model", "gemini-3.5-flash")
 
         try:
             client = genai.Client(api_key=api_key)
-            response = client.models.generate_content(
+            interaction = client.interactions.create(
                 model=model,
-                contents=[
-                    types.Content(role="user", parts=[
-                        types.Part.from_text(text=prompt),
-                        types.Part.from_bytes(data=jpeg, mime_type="image/jpeg"),
-                    ]),
+                input=[
+                    {"type": "text", "text": prompt},
+                    {"type": "image", "mime_type": "image/jpeg", "data": base64.b64encode(jpeg).decode("utf-8")},
                 ],
             )
-            analysis = response.text or "No analysis available"
+            analysis = interaction.output_text or "No analysis available"
         except Exception as e:
             logger.error("Inspect location analysis error: %s", e)
             analysis = f"Analysis failed: {e}"

@@ -1,12 +1,10 @@
 import asyncio
+import json
 import traceback
 import uuid
 from datetime import datetime, timezone, timedelta
 
 from google import genai
-from google.genai import types
-
-import base64
 
 from robot_manager import robot_manager
 from location_service import location_service
@@ -14,6 +12,17 @@ import settings_service
 import token_service
 import file_service
 from config import DEFAULT_FUNCTION_DECLARATIONS, _clamp
+
+
+def _content_type_for_mime(mime_type: str) -> str:
+    """Map a mime type to an Interactions API input content "type"."""
+    if mime_type.startswith("image/"):
+        return "image"
+    if mime_type.startswith("video/"):
+        return "video"
+    if mime_type.startswith("audio/"):
+        return "audio"
+    return "document"
 
 
 class GeminiTextSession:
@@ -25,8 +34,11 @@ class GeminiTextSession:
         self._session_id = uuid.uuid4().hex[:12]
         self._client = None
         self._model = ""
-        self._config = None
-        self._history = []  # list of types.Content
+        self._system_instruction = None
+        self._tools = None
+        self._generation_config = None
+        self._safety_settings = None
+        self._previous_interaction_id = None  # server-side state (Interactions API)
         self._enable_google_search = False
         self._files_injected = False
 
@@ -40,7 +52,7 @@ class GeminiTextSession:
             })
             return False
 
-        self._model = settings.get("text_model", "gemini-3-flash-preview")
+        self._model = settings.get("text_model", "gemini-3.5-flash")
         self._client = genai.Client(api_key=api_key)
 
         # Build system instruction (same logic as Live session)
@@ -130,42 +142,52 @@ class GeminiTextSession:
                 })
                 print("[TextAPI] Injected google_search function declaration")
 
-        tool_list = [types.Tool(function_declarations=func_decls)]
+        # Interactions API: each function tool dict needs a top-level "type": "function"
+        # (the old SDK's types.Tool(function_declarations=...) wrapper is gone).
+        self._tools = [{**fd, "type": "function"} for fd in func_decls]
 
         # Generation parameters
         temperature = _clamp(settings.get("text_temperature", 1.0), 0.0, 2.0, 1.0)
         max_output_tokens = _clamp(settings.get("text_max_output_tokens", 8192), 1, 65536, 8192, int)
         top_p = _clamp(settings.get("text_top_p", 0.95), 0.0, 1.0, 0.95)
-        top_k = _clamp(settings.get("text_top_k", 40), 1, 100, 40, int)
+        # NOTE: top_k has no equivalent in the Interactions API's generation_config
+        # (confirmed against the API reference — only temperature/max_output_tokens/top_p/
+        # thinking_level/seed/stop_sequences/speech_config/tool_choice/video_config exist).
+        # text_top_k is still read from settings so the field stays valid, but it is not sent.
+        _ = _clamp(settings.get("text_top_k", 40), 1, 100, 40, int)
         raw_safety = settings.get("text_safety_settings", {})
 
-        # Build safety settings list
-        VALID_SAFETY_CATEGORIES = {
-            "HARM_CATEGORY_HARASSMENT", "HARM_CATEGORY_HATE_SPEECH",
-            "HARM_CATEGORY_SEXUALLY_EXPLICIT", "HARM_CATEGORY_DANGEROUS_CONTENT",
+        # Build safety settings list — Interactions API renamed the category enum
+        # (HARM_CATEGORY_* -> lowercase HarmCategory values) and moved threshold to
+        # lowercase too; "method" is optional and defaults to probability-based blocking,
+        # matching the old API's default behavior.
+        CATEGORY_MAP = {
+            "HARM_CATEGORY_HARASSMENT": "harassment",
+            "HARM_CATEGORY_HATE_SPEECH": "hate_speech",
+            "HARM_CATEGORY_SEXUALLY_EXPLICIT": "sexually_explicit",
+            "HARM_CATEGORY_DANGEROUS_CONTENT": "dangerous_content",
         }
-        VALID_THRESHOLDS = {
-            "BLOCK_NONE", "BLOCK_LOW_AND_ABOVE",
-            "BLOCK_MEDIUM_AND_ABOVE", "BLOCK_ONLY_HIGH",
+        THRESHOLD_MAP = {
+            "BLOCK_NONE": "block_none",
+            "BLOCK_LOW_AND_ABOVE": "block_low_and_above",
+            "BLOCK_MEDIUM_AND_ABOVE": "block_medium_and_above",
+            "BLOCK_ONLY_HIGH": "block_only_high",
         }
         safety_settings = []
         for cat, thresh in raw_safety.items():
-            if cat in VALID_SAFETY_CATEGORIES and thresh in VALID_THRESHOLDS:
-                safety_settings.append(types.SafetySetting(category=cat, threshold=thresh))
+            if cat in CATEGORY_MAP and thresh in THRESHOLD_MAP:
+                safety_settings.append({"type": CATEGORY_MAP[cat], "threshold": THRESHOLD_MAP[thresh]})
             else:
                 print(f"[TextAPI] Ignoring invalid safety setting: {cat}={thresh}")
-        safety_settings = safety_settings or None
+        self._safety_settings = safety_settings or None
 
-        self._config = types.GenerateContentConfig(
-            system_instruction=system_prompt if system_prompt else None,
-            tools=tool_list,
-            temperature=temperature,
-            max_output_tokens=max_output_tokens,
-            top_p=top_p,
-            top_k=top_k,
-            safety_settings=safety_settings,
-        )
-        self._history = []
+        self._system_instruction = system_prompt if system_prompt else None
+        self._generation_config = {
+            "temperature": temperature,
+            "max_output_tokens": max_output_tokens,
+            "top_p": top_p,
+        }
+        self._previous_interaction_id = None
 
         await self._send_to_client({
             "type": "status",
@@ -179,42 +201,53 @@ class GeminiTextSession:
         if self._closed:
             return
 
-        parts = []
+        input_items = []
 
         # Inject enabled files on the first message (or after history clear)
         if not self._files_injected:
             enabled_files = file_service.get_enabled_files()
             for ef in enabled_files:
-                parts.append(types.Part.from_uri(
-                    file_uri=ef["uri"],
-                    mime_type=ef.get("mime_type", "application/octet-stream"),
-                ))
+                mime_type = ef.get("mime_type", "application/octet-stream")
+                input_items.append({
+                    "type": _content_type_for_mime(mime_type),
+                    "uri": ef["uri"],
+                    "mime_type": mime_type,
+                })
             if enabled_files:
                 print(f"[TextAPI] Injected {len(enabled_files)} file(s)")
                 self._files_injected = True
 
-        parts.append(types.Part.from_text(text=text))
+        input_items.append({"type": "text", "text": text})
 
-        self._history.append(
-            types.Content(role="user", parts=parts)
-        )
-
-        await self._generate()
+        await self._generate(input_items)
 
     async def send_audio(self, audio_b64: str):
         # Text API doesn't support audio input — no-op
         pass
 
-    async def _generate(self):
-        """Call generateContent in a loop to handle function calling."""
+    async def _generate(self, input_data):
+        """Call interactions.create in a loop to handle function calling."""
         while True:
             await self._send_to_client({"type": "thinking"})
             try:
-                response = await asyncio.to_thread(
-                    self._client.models.generate_content,
+                kwargs = dict(
                     model=self._model,
-                    contents=self._history,
-                    config=self._config,
+                    input=input_data,
+                    tools=self._tools,
+                    system_instruction=self._system_instruction,
+                    generation_config=self._generation_config,
+                )
+                # NOTE: safety_settings is NOT sent — confirmed via live test that the
+                # standard Gemini API (genai.Client(api_key=...)) rejects this top-level
+                # param with a 400 ("not available on the Gemini API but it is available
+                # on the Gemini Enterprise Agent Platform"). Sending it would break every
+                # turn for any user with custom safety settings configured. self._safety_settings
+                # is still computed in connect() (see below) in case this becomes available later.
+                if self._previous_interaction_id:
+                    kwargs["previous_interaction_id"] = self._previous_interaction_id
+                interaction = await asyncio.to_thread(
+                    self._client.interactions.create,
+                    **kwargs,
                 )
             except Exception as e:
                 print(f"[TextAPI] API call error: {e}")
@@ -228,12 +261,15 @@ class GeminiTextSession:
             if self._closed:
                 return
 
+            # Server-side state — carry this interaction forward as history.
+            self._previous_interaction_id = interaction.id
+
             # Track token usage
-            usage = response.usage_metadata
+            usage = getattr(interaction, "usage", None)
             if usage:
-                prompt_tokens = usage.prompt_token_count or 0
-                response_tokens = usage.candidates_token_count or 0
-                total_tokens = usage.total_token_count or 0
+                prompt_tokens = getattr(usage, "total_input_tokens", 0) or 0
+                response_tokens = getattr(usage, "total_output_tokens", 0) or 0
+                total_tokens = getattr(usage, "total_tokens", 0) or 0
                 if total_tokens > 0:
                     token_service.record(self._session_id, prompt_tokens, response_tokens, total_tokens)
                     await self._send_to_client({
@@ -243,64 +279,51 @@ class GeminiTextSession:
                         "total": total_tokens,
                     })
 
-            # Parse response
-            if not response.candidates:
-                await self._send_to_client({
-                    "type": "error",
-                    "message": "No response from Gemini",
-                })
-                return
+            steps = interaction.steps or []
+            function_call_steps = [s for s in steps if s.type == "function_call"]
+            model_output_steps = [s for s in steps if s.type == "model_output"]
 
-            candidate = response.candidates[0]
-            model_content = candidate.content
-
-            # Append model content to history (SDK preserves thought signatures)
-            self._history.append(model_content)
-
-            # Check if Google Search grounding was used
-            grounding = getattr(candidate, "grounding_metadata", None)
-            used_google_search = bool(
-                grounding and getattr(grounding, "search_entry_point", None)
-            )
-
-            # Separate function calls and text parts
-            function_call_parts = [p for p in model_content.parts if p.function_call]
-            text_parts = [p for p in model_content.parts if p.text is not None]
+            # Check if Google Search grounding was used (url_citation annotations
+            # on model_output text content blocks)
+            used_google_search = False
+            for s in model_output_steps:
+                for block in (s.content or []):
+                    if getattr(block, "type", None) == "text":
+                        for ann in (getattr(block, "annotations", None) or []):
+                            if getattr(ann, "type", None) == "url_citation":
+                                used_google_search = True
 
             # If Google Search and function calls both present, block function calls
-            if used_google_search and function_call_parts:
+            if used_google_search and function_call_steps:
                 print(f"[TextAPI] Google Search + function call conflict — blocking function calls")
 
                 # Notify frontend about the blocked function calls
-                for part in function_call_parts:
-                    fc = part.function_call
+                for step in function_call_steps:
                     await self._send_to_client({
                         "type": "function_call_blocked",
-                        "name": fc.name,
-                        "args": dict(fc.args) if fc.args else {},
+                        "name": step.name,
+                        "args": step.arguments or {},
                     })
 
                 # Send Google Search grounding info
-                await self._send_google_search_info(grounding)
+                await self._send_google_search_info(model_output_steps)
 
                 # Send text response if available
-                if text_parts:
-                    full_text = "".join(p.text for p in text_parts)
+                if interaction.output_text:
                     await self._send_to_client({
                         "type": "text",
-                        "content": full_text,
+                        "content": interaction.output_text,
                     })
 
                 await self._send_to_client({"type": "turn_complete"})
                 return
 
-            if function_call_parts:
+            if function_call_steps:
                 # Execute function calls and build responses
-                fn_response_parts = []
-                for part in function_call_parts:
-                    fc = part.function_call
-                    fn_name = fc.name
-                    fn_args = dict(fc.args) if fc.args else {}
+                fn_response_items = []
+                for step in function_call_steps:
+                    fn_name = step.name
+                    fn_args = step.arguments or {}
 
                     await self._send_to_client({
                         "type": "function_call",
@@ -320,39 +343,35 @@ class GeminiTextSession:
                         "result": result,
                     })
 
-                    fn_response_parts.append(
-                        types.Part.from_function_response(
-                            name=fn_name,
-                            response=result,
-                        )
-                    )
+                    fn_response_items.append({
+                        "type": "function_result",
+                        "call_id": step.id,
+                        "name": fn_name,
+                        "result": [{"type": "text", "text": json.dumps(result)}],
+                    })
 
                     # For capture_camera, attach the image alongside function response
                     if fn_name == "capture_camera" and result.get("ok"):
                         frame = robot_manager.get_camera_frame()
                         if frame and frame.get("ok") and frame.get("image_base64"):
-                            fn_response_parts.append(
-                                types.Part.from_bytes(
-                                    data=base64.b64decode(frame["image_base64"]),
-                                    mime_type="image/jpeg",
-                                )
-                            )
+                            fn_response_items.append({
+                                "type": "image",
+                                "mime_type": "image/jpeg",
+                                "data": frame["image_base64"],
+                            })
 
-                # Append function responses (+ image if any) as user turn and loop
-                self._history.append(
-                    types.Content(role="user", parts=fn_response_parts)
-                )
+                # Send function responses (+ image if any) back and loop
+                input_data = fn_response_items
                 continue  # Loop to call API again
 
-            elif text_parts:
+            elif interaction.output_text:
                 # Send Google Search grounding info if present
                 if used_google_search:
-                    await self._send_google_search_info(grounding)
+                    await self._send_google_search_info(model_output_steps)
 
-                full_text = "".join(p.text for p in text_parts)
                 await self._send_to_client({
                     "type": "text",
-                    "content": full_text,
+                    "content": interaction.output_text,
                 })
                 await self._send_to_client({"type": "turn_complete"})
                 return
@@ -378,23 +397,19 @@ class GeminiTextSession:
             return {"error": "No search queries provided"}
 
         try:
-            search_config = types.GenerateContentConfig(
-                tools=[types.Tool(google_search=types.GoogleSearch())],
-            )
-            response = await asyncio.to_thread(
-                self._client.models.generate_content,
+            interaction = await asyncio.to_thread(
+                self._client.interactions.create,
                 model=self._model,
-                contents=search_query,
-                config=search_config,
+                input=search_query,
+                tools=[{"type": "google_search"}],
             )
 
-            search_text = response.text or ""
+            search_text = interaction.output_text or ""
 
             # Forward grounding metadata (sources) to the frontend
-            if response.candidates:
-                grounding = getattr(response.candidates[0], "grounding_metadata", None)
-                if grounding:
-                    await self._send_google_search_info(grounding)
+            model_output_steps = [s for s in (interaction.steps or []) if s.type == "model_output"]
+            if model_output_steps:
+                await self._send_google_search_info(model_output_steps)
 
             return {"result": search_text}
         except Exception as e:
@@ -402,17 +417,18 @@ class GeminiTextSession:
             traceback.print_exc()
             return {"error": f"Google Search failed: {e}"}
 
-    async def _send_google_search_info(self, grounding):
-        """Send Google Search grounding metadata to the frontend."""
-        chunks = getattr(grounding, "grounding_chunks", None) or []
+    async def _send_google_search_info(self, model_output_steps):
+        """Send Google Search grounding metadata (url_citation annotations) to the frontend."""
         sources = []
-        for chunk in chunks:
-            web = getattr(chunk, "web", None)
-            if web:
-                sources.append({
-                    "title": getattr(web, "title", "") or "",
-                    "uri": getattr(web, "uri", "") or "",
-                })
+        for s in model_output_steps:
+            for block in (s.content or []):
+                if getattr(block, "type", None) == "text":
+                    for ann in (getattr(block, "annotations", None) or []):
+                        if getattr(ann, "type", None) == "url_citation":
+                            sources.append({
+                                "title": getattr(ann, "title", "") or "",
+                                "uri": getattr(ann, "url", "") or "",
+                            })
         await self._send_to_client({
             "type": "google_search",
             "sources": sources,
@@ -441,7 +457,7 @@ class GeminiTextSession:
 
     async def clear_history(self):
         """Clear the conversation history."""
-        self._history = []
+        self._previous_interaction_id = None
         self._files_injected = False
 
     async def close(self):
