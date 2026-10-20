@@ -98,7 +98,7 @@ Both API modes build the system prompt from 4 concatenated sections: Persona, Fu
 
 ### Google Search + Function Calling Conflict
 
-Models like `gemini-3-flash-preview` return 400 when both Google Search and function declarations are in the same request. The Text API works around this by only sending function declarations, then intercepting `google_search` function calls and executing them via a separate API call with `GoogleSearch` tool only.
+Some Gemini models return 400 when both Google Search and function declarations are in the same request (behaviour note, not a model pin — the text model comes from the per-mode `text_model` setting; pick it per the global model table: `gemini-3.5-flash-lite` by default, escalate to `gemini-3.8-flash`; the current `config.py` default `gemini-3.5-flash` lags that table). The Text API works around this by only sending function declarations, then intercepting `google_search` function calls and executing them via a separate API call with `GoogleSearch` tool only.
 
 ### Settings Migration
 
