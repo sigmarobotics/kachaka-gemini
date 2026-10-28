@@ -79,6 +79,9 @@ async function init() {
     if (sendBtn) sendBtn.addEventListener('click', handleSend);
     if (chatInput) {
         chatInput.addEventListener('keydown', (e) => {
+            // IME 組字中（注音／拼音選字）的 Enter 不送出；Safari 會在 compositionend
+            // 之後才送 keydown（isComposing 已是 false），所以同時檢查 keyCode 229
+            if (e.isComposing || e.keyCode === 229) return;
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
                 handleSend();
